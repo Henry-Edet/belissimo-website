@@ -1,4 +1,4 @@
-# Hair Studio Booking Platform
+## Hair Studio Booking Platform
 
 A modern booking and payment platform for a hair studio in Turkey. Built with **Next.js 15**, **TypeScript**, **TailwindCSS**, **Material UI**, **Prisma**, and **Stripe/iyzico** for payments.
 
