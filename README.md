@@ -86,7 +86,7 @@ Create .env file:
     
     pnpm prisma studio → inspect database
 
-##Roadmap
+##  Roadmap
 
      Core booking flow (services, availability, payments)
     
