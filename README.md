@@ -34,7 +34,7 @@ Features
   
   Deployment: Vercel (app) + Neon/Supabase (DB)
 
-##  Getting Started
+#  Getting Started
 1. Clone and install
    
         git clone https://github.com/yourusername/hair-studio-booking.git
