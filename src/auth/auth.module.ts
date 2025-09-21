@@ -1,17 +1,28 @@
-import { Module } from '@nestjs/common';
+import { Module, Injectable } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { JwtStrategy } from './jwt.strategy';
 
 @Module({
-  imports: [
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'supersecret',
-      signOptions: { expiresIn: '1d' },
-    }),
-  ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  imports: [],
+  controllers: [],
+  providers: [],
 })
-export class AuthModule {}
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor() {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ignoreExpiration: false,
+      secretOrKey: process.env.JWT_SECRET || 'supersecret',
+    });
+  }
+
+    async validate(payload: any) {
+      return { userId: payload.sub, username: payload.username };
+    }
+  }
+  export class AuthModule {}
