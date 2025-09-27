@@ -77,7 +77,7 @@ Create .env file:
          └─ styles/         # Tailwind + global CSS
 
 
-##Scripts
+##  Scripts
 
     pnpm dev → start dev server
     
