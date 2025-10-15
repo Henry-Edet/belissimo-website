@@ -24,7 +24,7 @@ Features
   
   UI: TailwindCSS + Material UI + Framer Motion
   
-  Database: PostgreSQL (via Prisma ORM) (will change to aws)
+  Database: PostgreSQL (via Prisma ORM) ###(will change to aws)
   
   Auth: Auth.js (NextAuth v5, Google/Email)
   
