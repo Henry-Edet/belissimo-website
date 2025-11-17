@@ -18,7 +18,7 @@ Features
 
 📱 Mobile-first, responsive UI
 
-##  Tech Stack
+#  Tech Stack
 
   Framework: Next.js 15 (App Router) + TypeScript
   
@@ -34,7 +34,7 @@ Features
   
   Deployment: Vercel (app) + Neon/Supabase (DB)
 
-#  Getting Started
+##  Getting Started
 
 1. Clone and install
    
