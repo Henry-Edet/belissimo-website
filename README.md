@@ -18,7 +18,7 @@ Features
 
 📱 Mobile-first, responsive UI
 
-#  Tech Stack
+## Tech Stack
 
   Framework: Next.js 15 (App Router) + TypeScript
   
