@@ -1,12 +1,18 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  // OneToOne,
+} from 'typeorm';
+import { Payment } from '../payments/payment.entity';
 
 @Entity()
 export class Booking {
   @PrimaryGeneratedColumn()
-  id: string;
+  id: number;
 
-  @Column()
-  serviceId: string;
+  @Column({ type: 'uuid', nullable: true })
+  serviceId: string | null;
 
   @Column()
   clientName: string;
@@ -15,11 +21,14 @@ export class Booking {
   clientPhone: string;
 
   @Column()
-  date: string; // YYYY-MM-DD
+  date: string;
 
   @Column()
-  time: string; // HH:mm
+  time: string;
 
-  @Column({ default: 'pending' }) 
+  @Column({ default: 'pending' })
   status: 'pending' | 'confirmed' | 'cancelled';
+
+  // @OneToOne(() => Payment, (payment) => payment.booking, { nullable: true })
+  // payment?: Payment;
 }

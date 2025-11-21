@@ -25,7 +25,7 @@ export class BookingsService {
   }
 
   findOne(id: number) {
-    return this.bookingRepo.findOne({ where: { id: String(id) } });
+    return this.bookingRepo.findOne({ where: { id: (id) } });
   }
 
   async update(id: number, data: UpdateBookingDto) {
