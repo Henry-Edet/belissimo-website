@@ -1,11 +1,10 @@
 import {
   Controller,
-  Get,
   Post,
   Body,
+  Get,
   Param,
   Patch,
-  Delete,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -16,9 +15,9 @@ export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
 
   @Post()
-  create(@Body() data: CreateBookingDto) {
-    return this.bookingsService.create(data);
-  }
+  create(@Body() dto: CreateBookingDto) {
+  return this.bookingsService.create(dto);
+}
 
   @Get()
   findAll() {
@@ -26,23 +25,17 @@ export class BookingsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.bookingsService.findOne(Number(id));
+  findOne(@Param('id') id: number) {
+    return this.bookingsService.findOne(id);
   }
-
-  @Get('service/:serviceId')
-  getByService(@Param('serviceId') serviceId: string) {
-    return this.bookingsService.findByService(serviceId);
-}
-
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() data: UpdateBookingDto) {
-    return this.bookingsService.update(Number(id), data);
+  update(@Param('id') id: number, @Body() dto: UpdateBookingDto) {
+    return this.bookingsService.updateBooking(id, dto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.bookingsService.remove(Number(id));
+  @Patch(':id/cancel')
+  cancel(@Param('id') id: number) {
+    return this.bookingsService.cancelBooking(id);
   }
 }

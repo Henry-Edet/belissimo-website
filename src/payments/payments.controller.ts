@@ -51,9 +51,11 @@ export class PaymentsController {
 
     try {
       const rawBody = (req as any).rawBody;
-
+// console.log({rawBody : req.body,
+//         sig,
+//         webhookSecret})
       event = this.stripe.webhooks.constructEvent(
-        rawBody,
+        req.body,
         sig,
         webhookSecret,
       );

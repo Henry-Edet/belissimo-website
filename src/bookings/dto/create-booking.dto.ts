@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsUUID, IsString } from 'class-validator';
+import { IsNotEmpty, IsUUID, IsString, IsISO8601 } from 'class-validator';
 
 export class CreateBookingDto {
   @IsUUID()
@@ -13,11 +13,7 @@ export class CreateBookingDto {
   @IsNotEmpty()
   clientPhone: string;
 
-  @IsString()
+  @IsISO8601()
   @IsNotEmpty()
-  date: string;
-
-  @IsString()
-  @IsNotEmpty()
-  time: string;
+  startAt: string;
 }

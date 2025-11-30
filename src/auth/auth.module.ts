@@ -1,28 +1,20 @@
-import { Module, Injectable } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
-import { AuthController } from './auth.controller';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { User } from '../users/user.entity';
 import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { JwtAccessStrategy } from './jwt-access.strategy';
+import { JwtRefreshStrategy } from './jwt-refresh.strategy';
 
 @Module({
-  imports: [],
-  controllers: [],
-  providers: [],
+  imports: [
+    TypeOrmModule.forFeature([User]),
+    JwtModule.register({}),
+  ],
+  providers: [AuthService, JwtAccessStrategy, JwtRefreshStrategy],
+  controllers: [AuthController],
+  exports: [AuthService],
 })
-
-@Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
-    super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'supersecret',
-    });
-  }
-
-    async validate(payload: any) {
-      return { userId: payload.sub, username: payload.username };
-    }
-  }
-  export class AuthModule {}
+export class AuthModule {}

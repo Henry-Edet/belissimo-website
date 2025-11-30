@@ -1,21 +1,30 @@
-import { Controller, Post, Body, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { AuthGuard } from '@nestjs/passport';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private auth: AuthService) {}
 
-  // POST /auth/login
-  @Post('login')
-  async login(@Body() body: { email: string; password: string }) {
-    return this.authService.login(body.email, body.password);
+  @Post('register')
+  register(@Body() body: { email: string; password: string; role?: string }) {
+    return this.auth.register(body.email, body.password, body.role as any);
   }
 
-  // GET /auth/validate (protected route)
-  @UseGuards(JwtAuthGuard)
-  @Get('validate')
-  async validate(@Req() req: any) {
-    return { user: req.user };
+  @Post('login')
+  login(@Body() body: { email: string; password: string }) {
+    return this.auth.login(body.email, body.password);
+  }
+
+  @UseGuards(AuthGuard('jwt-refresh'))
+  @Post('refresh')
+  refresh(@Req() req) {
+    return this.auth.refreshTokens(req.user.sub, req.user.refreshToken);
+  }
+
+  @UseGuards(AuthGuard('jwt-access'))
+  @Post('logout')
+  logout(@Req() req) {
+    return this.auth.logout(req.user.sub);
   }
 }

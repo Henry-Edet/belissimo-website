@@ -4,6 +4,10 @@ import { ConfigModule } from '@nestjs/config';
 import { ServicesModule } from './services/services.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { PaymentsModule } from './payments/payments.module';
+import { AuthModule } from './auth/auth.module';
+import { ChatModule } from './chat/chat.module';
+import { AiModule } from './ai/ai.module';
+
 
 @Module({
   imports: [
@@ -18,11 +22,14 @@ import { PaymentsModule } from './payments/payments.module';
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
       autoLoadEntities: true,
-      synchronize: true,
+      synchronize: false,
     }),
     ServicesModule,
     BookingsModule,
-    PaymentsModule
+    PaymentsModule,
+    AuthModule,
+    ChatModule,
+    AiModule
   ],
 })
 export class AppModule {}

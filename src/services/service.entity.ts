@@ -22,4 +22,5 @@ export class Service {
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
+  duration: number;
 }

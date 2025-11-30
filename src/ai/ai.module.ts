@@ -1,0 +1,12 @@
+import { Module } from '@nestjs/common';
+import { AiController } from './ai.controller';
+import { AiService } from './ai.service';
+import { BookingsModule } from '../bookings/bookings.module';
+import { PaymentsModule } from '../payments/payments.module';
+
+@Module({
+  imports: [BookingsModule, PaymentsModule],
+  controllers: [AiController],
+  providers: [AiService],
+})
+export class AiModule {}
