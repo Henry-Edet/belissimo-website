@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Booking } from './booking.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { Service } from '../services/service.entity';
+import { NotificationsService } from '../notifications/notification.service';
 
 @Injectable()
 export class BookingsService {
@@ -13,28 +14,24 @@ export class BookingsService {
 
     @InjectRepository(Service)
     private readonly serviceRepo: Repository<Service>,
+
+    private readonly notificationService: NotificationsService, // FIXED ✔
   ) {}
 
   async create(dto: CreateBookingDto) {
-    // get service
     const service = await this.serviceRepo.findOne({
       where: { id: dto.serviceId },
     });
 
-    if (!service) {
-      throw new NotFoundException('Service not found');
-    }
+    if (!service) throw new NotFoundException('Service not found');
 
-    // parse startAt
     const start = new Date(dto.startAt);
     if (isNaN(start.getTime())) {
       throw new BadRequestException('Invalid startAt datetime format');
     }
 
-    // compute endAt
     const end = new Date(start.getTime() + service.durationMinutes * 60_000);
 
-    // conflict check
     const conflict = await this.bookingRepo
       .createQueryBuilder('b')
       .where('b.serviceId = :serviceId', { serviceId: dto.serviceId })
@@ -46,7 +43,6 @@ export class BookingsService {
       throw new BadRequestException('This time slot is already booked for this service');
     }
 
-    // save
     const booking = this.bookingRepo.create({
       serviceId: dto.serviceId,
       clientName: dto.clientName,
@@ -56,7 +52,12 @@ export class BookingsService {
       status: 'pending',
     });
 
-    return this.bookingRepo.save(booking);
+    const saved = await this.bookingRepo.save(booking);
+
+    // 🔔 Notify Owner
+    await this.notificationService.notifyNewBooking(saved);
+
+    return saved;
   }
 
   async findAll() {
@@ -70,53 +71,56 @@ export class BookingsService {
   }
 
   async updateBooking(id: number, dto: Partial<CreateBookingDto>) {
-  const booking = await this.bookingRepo.findOne({ where: { id } });
-  if (!booking) throw new NotFoundException('Booking not found');
+    const booking = await this.bookingRepo.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('Booking not found');
 
-  // update simple fields
-  if (dto.clientName) booking.clientName = dto.clientName;
-  if (dto.clientPhone) booking.clientPhone = dto.clientPhone;
+    if (dto.clientName) booking.clientName = dto.clientName;
+    if (dto.clientPhone) booking.clientPhone = dto.clientPhone;
 
-  // if start date updated
-  if (dto.startAt) {
-    const start = new Date(dto.startAt);
-    if (isNaN(start.getTime())) {
-      throw new BadRequestException('Invalid startAt datetime');
+    if (dto.startAt) {
+      const start = new Date(dto.startAt);
+      if (isNaN(start.getTime())) {
+        throw new BadRequestException('Invalid startAt datetime');
+      }
+
+      const service = await this.serviceRepo.findOne({
+        where: { id: booking.serviceId },
+      });
+
+      if (!service) throw new NotFoundException('Service not found');
+
+      const end = new Date(start.getTime() + service.durationMinutes * 60_000);
+
+      const conflict = await this.bookingRepo
+        .createQueryBuilder('b')
+        .where('b.serviceId = :serviceId', { serviceId: booking.serviceId })
+        .andWhere('b.id != :id', { id })
+        .andWhere('b.startAt < :end', { end })
+        .andWhere('b.endAt > :start', { start })
+        .getOne();
+
+      if (conflict) {
+        throw new BadRequestException('This time slot is already booked');
+      }
+
+      booking.startAt = start;
+      booking.endAt = end;
     }
 
-    // get service to recalc duration
-    const service = await this.serviceRepo.findOne({
-      where: { id: booking.serviceId },
-    });
-    if (!service) throw new NotFoundException('Service not found');
-
-    const end = new Date(start.getTime() + service.durationMinutes * 60_000);
-
-    // conflict check
-    const conflict = await this.bookingRepo
-      .createQueryBuilder('b')
-      .where('b.serviceId = :serviceId', { serviceId: booking.serviceId })
-      .andWhere('b.id != :id', { id })
-      .andWhere('b.startAt < :end', { end })
-      .andWhere('b.endAt > :start', { start })
-      .getOne();
-
-    if (conflict) {
-      throw new BadRequestException('This time slot is already booked');
-    }
-
-    booking.startAt = start;
-    booking.endAt = end;
+    return this.bookingRepo.save(booking);
   }
 
-  return this.bookingRepo.save(booking);
-}
+  async cancelBooking(id: number) {
+    const booking = await this.bookingRepo.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('Booking not found');
 
-async cancelBooking(id: number) {
-  const booking = await this.bookingRepo.findOne({ where: { id } });
-  if (!booking) throw new NotFoundException('Booking not found');
+    booking.status = 'cancelled';
 
-  booking.status = 'cancelled';
-  return this.bookingRepo.save(booking);
-}
+    const saved = await this.bookingRepo.save(booking);
+
+    // 🔔 Notify owner
+    await this.notificationService.notifyCancelledBooking(saved);
+
+    return saved;
+  }
 }

@@ -1,14 +1,6 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Get,
-  Param,
-  Patch,
-} from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, ParseIntPipe } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
-import { UpdateBookingDto } from './dto/update-booking.dto';
 
 @Controller('bookings')
 export class BookingsController {
@@ -16,8 +8,8 @@ export class BookingsController {
 
   @Post()
   create(@Body() dto: CreateBookingDto) {
-  return this.bookingsService.create(dto);
-}
+    return this.bookingsService.create(dto);
+  }
 
   @Get()
   findAll() {
@@ -25,17 +17,12 @@ export class BookingsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: number) {
+  findOne(@Param('id', ParseIntPipe) id: number) {
     return this.bookingsService.findOne(id);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: number, @Body() dto: UpdateBookingDto) {
-    return this.bookingsService.updateBooking(id, dto);
-  }
-
-  @Patch(':id/cancel')
-  cancel(@Param('id') id: number) {
+  @Post(':id/cancel')
+  cancel(@Param('id', ParseIntPipe) id: number) {
     return this.bookingsService.cancelBooking(id);
   }
 }

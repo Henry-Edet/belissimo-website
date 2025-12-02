@@ -1,11 +1,10 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsString, IsOptional } from 'class-validator';
 
-export class AiMessageDto {
+export class UserMessageDto {
   @IsString()
-  @IsNotEmpty()
   message: string;
 
-  @IsString()
   @IsOptional()
-  userId?: string; // optional, useful later for per-user memory
+  @IsString()
+  userId?: string;
 }
