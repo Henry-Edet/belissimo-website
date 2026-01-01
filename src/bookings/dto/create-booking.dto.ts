@@ -1,19 +1,36 @@
-import { IsNotEmpty, IsUUID, IsString, IsISO8601 } from 'class-validator';
+import { IsString, IsUUID, IsDateString, IsNumber, IsOptional, IsIn } from 'class-validator';
+import { Booking } from '../booking.entity';
 
 export class CreateBookingDto {
   @IsUUID()
-  @IsNotEmpty()
   serviceId: string;
 
   @IsString()
-  @IsNotEmpty()
+  subServiceName: string;
+
+  @IsString()
   clientName: string;
 
   @IsString()
-  @IsNotEmpty()
   clientPhone: string;
 
-  @IsISO8601()
-  @IsNotEmpty()
+  @IsDateString()
   startAt: string;
+
+  @IsNumber()
+  @IsOptional()
+  durationMinutes?: number;
+
+  @IsNumber()
+  @IsOptional()
+  priceCents?: number;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsString()
+  @IsIn(['pending', 'confirmed', 'cancelled'])
+  @IsOptional()
+  status?: Booking['status'];
 }

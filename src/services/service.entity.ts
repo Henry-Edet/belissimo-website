@@ -1,26 +1,31 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+// src/services/service.entity.ts
+import { Entity, PrimaryColumn, Column, CreateDateColumn, OneToMany } from 'typeorm';
+import { Booking } from '../bookings/booking.entity';
 
 @Entity('services')
 export class Service {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: 'uuid' })
   id: string;
 
   @Column()
   name: string;
 
-  @Column({ nullable: true })
-  description: string;
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
 
-  @Column({ name: 'duration_minutes', type: 'int' })
+  @Column({ type: 'integer' })
   durationMinutes: number;
 
-  @Column({ name: 'price_cents', type: 'int' })
+  @Column({ type: 'integer' })
   priceCents: number;
 
-  @Column({ name: 'deposit_percentage', type: 'int', default: 30 })
+  @Column({ type: 'integer' })
   depositPercentage: number;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
-  duration: number;
+
+  // Add this relationship
+  @OneToMany(() => Booking, (booking) => booking.service)
+  bookings: Booking[];
 }
