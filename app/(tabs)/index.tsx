@@ -1,98 +1,322 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Dimensions,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+} from 'react-native';
+import { MotiView, MotiImage } from 'moti';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useFonts } from 'expo-font';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_WIDTH = 220;
+const CARD_SPACING = 16;
+const CARD_FULL_WIDTH = CARD_WIDTH + CARD_SPACING;
+
+const SERVICES = [
+  {
+    key: 'installation',
+    title: 'Wig Installation',
+    subtitle: 'Frontals, closures, ponytails',
+    image: require('../../assets/images/installation.jpg'),
+    route: '/services/installation',
+  },
+  {
+    key: 'braids',
+    title: 'Braids',
+    subtitle: 'Knotless, boho, cornrows',
+    image: require('../../assets/images/braids.jpg'),
+    route: '/services/braids',
+  },
+  {
+    key: 'wash',
+    title: 'Wash & Care',
+    subtitle: 'Wash, condition, treat',
+    image: require('../../assets/images/washingHair.jpg'),
+    route: '/services/wash',
+  },
+];
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const router = useRouter();
+  const [fontsLoaded] = useFonts({
+    MomoSignature: require('../../assets/fonts/MomoSignature-Regular.ttf'),
+  });
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const scrollRef = useRef<ScrollView | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Auto-slide carousel
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const nextIndex = (currentIndex + 1) % SERVICES.length;
+      setCurrentIndex(nextIndex);
+
+      scrollRef.current?.scrollTo({
+        x: nextIndex * CARD_FULL_WIDTH,
+        animated: true,
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [currentIndex]);
+
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const index = Math.round(x / CARD_FULL_WIDTH);
+    if (index !== currentIndex) setCurrentIndex(index);
+  };
+
+  if (!fontsLoaded) {
+    // You can swap this for a loader if you like
+    return null;
+  }
+
+  return (
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* HERO SECTION */}
+      <View style={styles.heroWrapper}>
+        {/* Background image */}
+        <MotiImage
+          source={require('../../assets/images/hero-wig.jpg')}
+          style={styles.heroBackground}
+          from={{ opacity: 0 }}
+          animate={{ opacity: 0.9 }}
+          transition={{ duration: 800 }}
+        />
+
+        {/* Rose nude overlay */}
+        <View style={styles.heroShade} />
+
+        {/* HEADER BAR */}
+        <View style={styles.headerRow}>
+          {/* Logo alone on the left */}
+          <Image
+            source={require('../../assets/images/logo.png')}
+            style={styles.logo}
+          />
+
+          {/* Center menu */}
+          <View style={styles.headerMenu}>
+            <TouchableOpacity onPress={() => router.push('/about')}>
+              <Text style={styles.headerMenuText}>About Us</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/faqs')}
+              style={{ marginLeft: 18 }}
+            >
+              <Text style={styles.headerMenuText}>FAQs</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Right icons */}
+          <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.iconButton}>
+              <Ionicons name="search" size={18} color="#FFEFF3" />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.iconButton, { marginLeft: 10 }]}>
+              <Ionicons name="notifications-outline" size={22} color="#FFEFF3" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Tagline at bottom of hero */}
+        <View style={styles.heroTaglineWrapper}>
+          <Text style={styles.heroTagline}>
+            Effortless wigs, braids & care.
+          </Text>
+        </View>
+      </View>
+
+      {/* SECTION TITLE */}
+      <Text style={styles.sectionTitle}>Our Services</Text>
+
+      {/* AUTO-SLIDING SERVICE CAROUSEL */}
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={CARD_FULL_WIDTH}
+        decelerationRate="fast"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={styles.carouselContent}
+      >
+        {SERVICES.map((service, index) => {
+          const isActive = index === currentIndex;
+
+          return (
+            <TouchableOpacity
+              key={service.key}
+              onPress={() => router.push(service.route)}
+              activeOpacity={0.9}
+            >
+              <MotiView
+                style={[
+                  styles.serviceCard,
+                  {
+                    transform: [{ scale: isActive ? 1 : 0.95 }],
+                    opacity: isActive ? 1 : 0.7,
+                  },
+                ]}
+                from={{ opacity: 0, scale: 0.9, translateY: 20 }}
+                animate={{ opacity: 1, scale: isActive ? 1 : 0.95, translateY: 0 }}
+                transition={{ delay: 150 + index * 80 }}
+              >
+                <Image source={service.image} style={styles.cardImage} />
+                <Text style={styles.cardTitle}>{service.title}</Text>
+                <Text style={styles.cardSubtitle}>{service.subtitle}</Text>
+              </MotiView>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  // Rose nude background
+  container: {
+    flex: 1,
+    backgroundColor: '#F9ECEE', // soft rose nude
+  },
+
+  /* HERO SECTION */
+  heroWrapper: {
+    height: 360,
+    width: '100%',
+    position: 'relative',
+  },
+
+  heroBackground: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+
+  heroShade: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(54, 15, 21, 0.45)', // deep wine tint over image
+  },
+
+  headerRow: {
+    paddingTop: 40,
+    paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+
+  logo: {
+    width: 110,
+    height: 110,
+    resizeMode: 'contain',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+
+  headerMenu: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    justifyContent: 'center',
+  },
+
+  headerMenuText: {
+    fontSize: 13,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: '#FFEFF3',
+    fontWeight: '600',
+  },
+
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  iconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,239,243,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,239,243,0.12)',
+  },
+
+  heroTaglineWrapper: {
     position: 'absolute',
+    bottom: 22,
+    width: '100%',
+    alignItems: 'center',
+  },
+
+  heroTagline: {
+    fontFamily: 'MomoSignature',
+    fontSize: 24,
+    color: '#FFEFF3',
+    fontStyle: 'italic',
+  },
+
+  /* SECTION TITLE */
+  sectionTitle: {
+    alignSelf: 'center',
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: 20,
+    marginBottom: 16,
+    paddingHorizontal: 18,
+    color: '#5B3034', // muted wine
+  },
+
+  /* CAROUSEL */
+  carouselContent: {
+    paddingHorizontal: (SCREEN_WIDTH - CARD_WIDTH) / 2,
+    paddingBottom: 28,
+  },
+
+  serviceCard: {
+    width: CARD_WIDTH,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    marginRight: CARD_SPACING,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+
+  cardImage: {
+    width: '100%',
+    height: 160,
+    resizeMode: 'cover',
+  },
+
+  cardTitle: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    fontWeight: '700',
+    fontSize: 16,
+    color: '#3E2326',
+  },
+
+  cardSubtitle: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    paddingTop: 2,
+    fontSize: 13,
+    color: '#8F6F73',
   },
 });
