@@ -13,10 +13,8 @@ import {
 import { Calendar } from 'react-native-calendars';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MotiView } from 'moti';
-import { API_BASE_URL } from '../../config';
-
-// Import your services data structure
-import { SERVICES, SubService } from '../../data/services';
+import { API_BASE_URL } from '../../../lib/config';
+import { SERVICES, SubService } from '../../../lib/data/services';
 
 // Define a type for sub-service with unique ID
 interface SubServiceWithUniqueId extends SubService {
@@ -358,137 +356,88 @@ export default function BookingScreen() {
 
   // Enhanced availability check with better concurrency control
   const checkAvailability = async () => {
-    if (!selectedDate || !selectedTime) {
-      showAlert('Required', 'Please select both date and time first');
-      return;
-    }
+  if (!selectedDate || !selectedTime) {
+    showAlert('Required', 'Please select both date and time first');
+    return;
+  }
 
-    if (!selectedSubServiceDetails) {
-      showAlert('Service Required', 'Please select a sub-service first');
-      return;
-    }
+  if (!selectedSubServiceDetails) {
+    showAlert('Service Required', 'Please select a sub-service first');
+    return;
+  }
 
-    if (!selectedMainServiceBackendId) {
-      showAlert('Configuration Error', 'Service configuration error. Please contact support.');
-      return;
-    }
+  if (!selectedMainServiceBackendId) {
+    showAlert('Configuration Error', 'Service configuration error. Please contact support.');
+    return;
+  }
 
-    // Client-side validation first
-    if (isTimeSlotBooked(selectedTime)) {
-      showAlert('Already Booked', 'This time slot is already booked for the selected service. Please choose another time.');
-      setAvailability(false);
-      return;
-    }
+  setLoading(true);
+  setAvailability(null);
 
-    if (isTimeSlotFullyBooked(selectedTime)) {
-      showAlert('Time Slot Full', 'This time slot has reached maximum capacity. Please choose another time.');
-      setAvailability(false);
-      return;
-    }
+  try {
+    const [hour, minutePart] = selectedTime.split(':');
+    const minute = minutePart.slice(0, 2);
+    const period = minutePart.slice(3).trim();
 
-    setLoading(true);
-    setAvailability(null);
+    let hour24 = parseInt(hour, 10);
+    if (period === 'PM' && hour24 !== 12) hour24 += 12;
+    if (period === 'AM' && hour24 === 12) hour24 = 0;
 
-    try {
-      const [hour, minutePart] = selectedTime.split(':');
-      const minute = minutePart.slice(0, 2);
-      const period = minutePart.slice(3).trim();
+    const startAt =
+      `${selectedDate}T${hour24.toString().padStart(2, '0')}:${minute}:00`;
 
-      let hour24 = parseInt(hour);
-      if (period === 'PM' && hour24 !== 12) hour24 += 12;
-      if (period === 'AM' && hour24 === 12) hour24 = 0;
+    // ✅ CORRECT BACKEND ROUTE
+    const endpoint = `${API_BASE_URL}/bookings/availability/check`;
 
-      const startAt = `${selectedDate}T${hour24.toString().padStart(2, '0')}:${minute}:00`;
+    // ✅ SEND durationMinutes (THIS FIXES THE 500)
+    const url =
+      `${endpoint}?serviceId=${encodeURIComponent(selectedMainServiceBackendId)}` +
+      `&startAt=${encodeURIComponent(startAt)}` +
+      `&durationMinutes=${encodeURIComponent(
+        selectedSubServiceDetails.durationMinutes
+      )}`;
 
-      console.log('🔄 Checking availability with:', {
-        selectedMainService,
-        selectedSubService: selectedSubServiceDetails.originalId,
-        selectedSubServiceName: selectedSubServiceDetails.name,
-        backendServiceId: selectedMainServiceBackendId,
-        selectedDate,
-        selectedTime,
-        startAt,
-        duration: selectedSubServiceDetails.durationMinutes
-      });
+    console.log('🔄 Availability check URL:', url);
 
-      // Use the main service's backend ID for the API call
-      const endpoint = `${API_BASE_URL}/bookings/availability/check`;
-      
-      // Include sub-service name in the request to prevent same service double booking
-      // In your frontend booking.tsx, update the API call:
-      const url = `${endpoint}?serviceId=${encodeURIComponent(selectedMainServiceBackendId)}&startAt=${encodeURIComponent(startAt)}&subServiceName=${encodeURIComponent(selectedSubServiceDetails.name)}`;
-      
-      console.log('Request URL:', url);
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      });
+    const responseText = await response.text();
 
-      console.log(`Response status: ${response.status}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Availability response:', data);
-        
-        // Handle response format
-        if (typeof data.available === 'boolean') {
-          setAvailability(data.available);
-          if (data.available) {
-            showAlert('✅ Available!', 'This slot is free. You can proceed to payment.');
-          } else {
-            showAlert('⛔ Not available', 'This time slot is no longer available. Please select another time.');
-          }
-        } else if (typeof data.isAvailable === 'boolean') {
-          setAvailability(data.isAvailable);
-          if (data.isAvailable) {
-            showAlert('✅ Available!', 'This slot is free. You can proceed to payment.');
-          } else {
-            showAlert('⛔ Not available', 'This time slot is no longer available. Please select another time.');
-          }
-        } else if (data.message) {
-          showAlert('Info', data.message);
-          setAvailability(false);
-        } else {
-          showAlert('Error', 'Unexpected response from server');
-          setAvailability(null);
-        }
-      } else {
-        const errorText = await response.text();
-        console.log(`Server error (${response.status}):`, errorText);
-        
-        let errorMessage = `Server error: ${response.status}`;
-        try {
-          const errorData = JSON.parse(errorText);
-          if (errorData.message) errorMessage = errorData.message;
-          if (errorData.error) errorMessage = errorData.error;
-        } catch {
-          // Not JSON
-        }
-        
-        showAlert('Error', errorMessage);
-        setAvailability(null);
-      }
-
-    } catch (err: any) {
-      console.error('❌ Availability check failed:', err);
-      
-      const errorMessage = err.message || 'Unknown error';
-      
-      if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
-        showAlert('Connection Error', 'Please check your internet connection and try again.');
-      } else {
-        showAlert('Error', `Could not check availability: ${errorMessage}`);
-      }
-      
+    if (!response.ok) {
+      console.error('❌ Backend error:', responseText);
+      showAlert('Error', 'Server could not check availability. Please try again.');
       setAvailability(null);
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
+
+    const data = JSON.parse(responseText);
+
+    if (typeof data.available === 'boolean') {
+      setAvailability(data.available);
+      showAlert(
+        data.available ? '✅ Available!' : '⛔ Unavailable',
+        data.available
+          ? 'This slot is free. You can proceed to payment.'
+          : 'This time slot is no longer available. Please select another time.'
+      );
+    } else {
+      showAlert('Error', 'Unexpected response from server.');
+      setAvailability(null);
+    }
+  } catch (err: any) {
+    console.error('❌ Availability check failed:', err);
+    showAlert('Error', 'Could not check availability. Please try again.');
+    setAvailability(null);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const proceedToPayment = () => {
     if (availability === null) {
@@ -528,7 +477,7 @@ export default function BookingScreen() {
     }
 
     router.push({
-      pathname: `/payments/checkout`,
+      pathname: `/payment/checkout`,
       params: {
         serviceId: selectedMainServiceBackendId,
         mainServiceId: selectedMainService,

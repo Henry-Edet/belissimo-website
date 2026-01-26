@@ -1,4 +1,5 @@
 // app/services/catalog.ts
+import { View, Text } from 'react-native';
 export type ServiceId = 'installation' | 'braids' | 'wash';
 
 export type Service = {
@@ -39,3 +40,7 @@ export const SERVICE_CATALOG: Record<ServiceId, Service> = {
       'Hair washing, conditioning, setting and drying. Perfect reset before styling.',
   },
 };
+
+export default function CatalogPlaceholder() {
+  return null;
+}
