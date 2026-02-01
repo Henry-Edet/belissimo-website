@@ -1,58 +1,36 @@
 // src/bookings/booking.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne, CreateDateColumn, ManyToOne } from 'typeorm';
-import { Payment } from '../payments/payment.entity';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Service } from '../services/service.entity';
 
-@Entity('bookings')
+@Entity('booking')
 export class Booking {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'uuid' })
+  // Match EXACT column name from your database (camelCase with quotes)
+  @Column({ name: 'serviceId' })
   serviceId: string;
 
-  @Column()
-  subServiceName: string;
+  // Map to the Service entity
+  @ManyToOne(() => Service)
+  @JoinColumn({ name: 'serviceId' })
+  service: Service;
 
-  @Column()
+  @Column({ name: 'clientName' })
   clientName: string;
 
-  @Column()
+  @Column({ name: 'clientPhone' })
   clientPhone: string;
 
-  @Column({ type: 'timestamptz' })
+  @Column({ name: 'startAt', type: 'timestamptz' })
   startAt: Date;
 
-  @Column({ type: 'timestamptz' })
+  @Column({ name: 'endAt', type: 'timestamptz' })
   endAt: Date;
 
   @Column({ default: 'pending' })
-  status: 'pending' | 'confirmed' | 'cancelled';
+  status: string;
 
-  @Column({ type: 'integer', nullable: true })
-  durationMinutes?: number;
-
-  @Column({ type: 'integer', nullable: true })
-  priceCents?: number;
-
-  @Column({ type: 'integer', nullable: true })
-  depositAmount?: number;
-
-  @Column({ type: 'integer', nullable: true })
-  totalAmount?: number;
-
-  @Column({ nullable: true })
-  paymentStatus?: string;
-
-  @Column({ type: 'text', nullable: true })
-  notes?: string;
-
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
-
-  @OneToOne(() => Payment, (payment) => payment.booking, { nullable: true })
-  payment?: Payment;
-
-  @ManyToOne(() => Service, (service) => service.bookings, { nullable: true })
-  service?: Service;
+  @Column({ name: 'subServiceName', nullable: true })
+  subServiceName?: string;
 }

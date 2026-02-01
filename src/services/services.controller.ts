@@ -23,7 +23,7 @@ export class ServicesController {
 
   @Get(':id')
   getOne(@Param('id') id: string): Promise<Service> {
-    return this.servicesService.findOne(Number(id));
+    return this.servicesService.findOne(id);
   }
 
   @Post()
@@ -36,11 +36,11 @@ export class ServicesController {
     @Param('id') id: string,
     @Body() data: UpdateServiceDto,
   ): Promise<Service> {
-    return this.servicesService.update(Number(id), data);
+    return this.servicesService.update(id, data);
   }
 
   @Delete(':id')
   delete(@Param('id') id: string): Promise<void> {
-    return this.servicesService.remove(Number(id));
+    return this.servicesService.remove(id);
   }
 }

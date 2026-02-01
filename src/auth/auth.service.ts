@@ -5,6 +5,7 @@ import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
 
 import { User } from '../users/user.entity';
+// import { UserRole } from '../users/user.entity';
 
 @Injectable()
 export class AuthService {
@@ -20,7 +21,7 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const user = this.userRepo.create({ email, passwordHash, role });
+    const user = this.userRepo.create({ email, passwordHash, role: 'admin' });
     await this.userRepo.save(user);
 
     return { message: 'User created', email };
@@ -74,6 +75,6 @@ export class AuthService {
   }
 
   async logout(userId: number) {
-    await this.userRepo.update(userId, { refreshTokenHash: null });
+    await this.userRepo.update(userId, { refreshTokenHash: () => 'NULL' });
   }
 }

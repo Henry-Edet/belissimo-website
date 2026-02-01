@@ -16,8 +16,8 @@ export class ServicesService {
     return this.serviceRepo.find();
   }
 
-  async findOne(id: number): Promise<Service> {
-    const service = await this.serviceRepo.findOne({ where: { id: String(id) } });
+  async findOne(id: string): Promise<Service> {
+    const service = await this.serviceRepo.findOne({ where: { id } });
 
     if (!service) {
       throw new NotFoundException(`Service with ID ${id} not found`);
@@ -31,24 +31,24 @@ export class ServicesService {
     return this.serviceRepo.save(newService);
   }
 
-  async update(id: number, data: UpdateServiceDto): Promise<Service> {
-    const exists = await this.serviceRepo.findOne({ where: { id: String(id) } });
+  async update(id: string, data: UpdateServiceDto): Promise<Service> {
+    const exists = await this.serviceRepo.findOne({ where: { id } });
 
     if (!exists) {
       throw new NotFoundException(`Service with ID ${id} not found`);
     }
 
-    await this.serviceRepo.update(String(id), data);
+    await this.serviceRepo.update(id, data);
     return this.findOne(id);
   }
 
-  async remove(id: number): Promise<void> {
-    const exists = await this.serviceRepo.findOne({ where: { id: String(id) } });
+  async remove(id: string): Promise<void> {
+    const exists = await this.serviceRepo.findOne({ where: { id } });
 
     if (!exists) {
       throw new NotFoundException(`Service with ID ${id} not found`);
     }
 
-    await this.serviceRepo.delete(String(id));
+    await this.serviceRepo.delete(id);
   }
 }

@@ -1,63 +1,66 @@
 // src/bookings/bookings.controller.ts
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UsePipes, ValidationPipe } from '@nestjs/common';
-import { BookingsService } from './bookings.service';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Query,
+  UsePipes,
+  ValidationPipe,
+  HttpCode,
+  HttpStatus,
+  BadRequestException,
+} from '@nestjs/common';
+import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CheckAvailabilityDto } from './dto/check-availability.dto';
+import { Booking } from './booking.entity';
 
 @Controller('bookings')
 export class BookingsController {
-  constructor(private readonly bookingsService: BookingsService) {}
+  constructor(private readonly bookingService: BookingService) {}
 
-  // Check availability endpoint
-  @Get('availability/check')
-  @UsePipes(new ValidationPipe({ transform: true }))
-  async checkAvailability(@Query() checkAvailabilityDto: CheckAvailabilityDto) {
-    return this.bookingsService.checkAvailability(checkAvailabilityDto);
-  }
-
-  // Create booking
   @Post()
+  @HttpCode(HttpStatus.CREATED)
   @UsePipes(new ValidationPipe({ transform: true }))
-  create(@Body() createBookingDto: CreateBookingDto) {
-    return this.bookingsService.create(createBookingDto);
+  async create(
+    @Body() createBookingDto: CreateBookingDto,
+  ): Promise<Booking> {
+    return this.bookingService.create(createBookingDto);
   }
 
-  // Get all bookings for a specific date
-  @Get()
-  findByDate(@Query('date') date: string) {
-    if (!date) {
-      return this.bookingsService.findAll();
+  /**
+   * GET /bookings/availability/check
+   */
+  @Get('availability/check')
+  async checkAvailability(@Query() query: any) {
+    try {
+      const { serviceId, startAt, durationMinutes } = query;
+
+      console.log('📥 Availability request:', query);
+
+      if (!serviceId || !startAt) {
+        throw new BadRequestException('serviceId and startAt are required');
+      }
+
+      const start = new Date(startAt);
+      if (isNaN(start.getTime())) {
+        throw new BadRequestException('Invalid startAt date');
+      }
+
+      const minutes =
+        durationMinutes !== undefined ? Number(durationMinutes) : undefined;
+
+      return await this.bookingService.checkAvailability(
+        serviceId,
+        start,
+        minutes,
+      );
+    } catch (err: any) {
+      // 🔥 THIS IS WHAT YOU’VE BEEN MISSING
+      console.error('🔥 Availability check crashed:', err);
+      console.error('🔥 Stack:', err?.stack);
+
+      throw err; // let Nest return proper status
     }
-    return this.bookingsService.findByDate(date);
-  }
-
-  // Get booking by ID
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.bookingsService.findOne(+id);
-  }
-
-  // Update booking status
-  @Patch(':id/status')
-  updateStatus(
-    @Param('id') id: string,
-    @Body('status') status: 'pending' | 'confirmed' | 'cancelled',
-  ) {
-    return this.bookingsService.updateStatus(+id, status);
-  }
-
-  // Update payment info
-  @Patch(':id/payment')
-  updatePaymentInfo(
-    @Param('id') id: string,
-    @Body() paymentData: { depositAmount?: number; totalAmount?: number; paymentStatus?: string },
-  ) {
-    return this.bookingsService.updatePaymentInfo(+id, paymentData);
-  }
-
-  // Delete booking
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.bookingsService.remove(+id);
-  }
-}
+  }}

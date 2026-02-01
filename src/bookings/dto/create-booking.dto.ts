@@ -1,36 +1,33 @@
-import { IsString, IsUUID, IsDateString, IsNumber, IsOptional, IsIn } from 'class-validator';
-import { Booking } from '../booking.entity';
+// src/bookings/dto/create-booking.dto.ts
+import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateBookingDto {
-  @IsUUID()
+  @IsNotEmpty()
+  @IsString()
   serviceId: string;
 
-  @IsString()
-  subServiceName: string;
-
+  @IsNotEmpty()
   @IsString()
   clientName: string;
 
+  @IsNotEmpty()
   @IsString()
-  clientPhone: string;
+  clientPhone: string; // Remove phone validation or make it optional
 
-  @IsDateString()
-  startAt: string;
+  @IsNotEmpty()
+  @Transform(({ value }) => {
+    // Try to parse date
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? value : date;
+  })
+  startAt: Date | string;
 
-  @IsNumber()
   @IsOptional()
-  durationMinutes?: number;
+  @Transform(({ value }) => value ? new Date(value) : undefined)
+  endAt?: Date;
 
-  @IsNumber()
   @IsOptional()
-  priceCents?: number;
-
   @IsString()
-  @IsOptional()
-  notes?: string;
-
-  @IsString()
-  @IsIn(['pending', 'confirmed', 'cancelled'])
-  @IsOptional()
-  status?: Booking['status'];
+  subServiceName?: string;
 }
