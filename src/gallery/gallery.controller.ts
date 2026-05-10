@@ -1,221 +1,157 @@
 // src/gallery/gallery.controller.ts
+
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Body,
-  Param,
-  Delete,
-  Query,
-  UseInterceptors,
-  UploadedFile,
-  ParseFilePipe,
-  MaxFileSizeValidator,
-  FileTypeValidator,
-  UseGuards,
-  Request,
+  Controller, Get, Post, Patch, Body, Param,
+  Delete, Query, UseInterceptors, UploadedFile,
+  UseGuards, Request, BadRequestException,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiConsumes,
-  ApiBearerAuth,
-  ApiBody,
-  ApiQuery,
-} from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { GalleryService } from './gallery.service';
-import { CreateGalleryDto, CreateGalleryResponseDto, GalleryFolder } from './dto/create-gallery.dto';
+import { CreateGalleryDto } from './dto/create-gallery.dto';
 import { UpdateGalleryDto } from './dto/update-gallery.dto';
-import { GalleryResponseDto } from './dto/gallery-response.dto';
-import { GenerateSignedUrlDto, SignedUrlResponseDto, SignedUrlOperation } from './dto/signed-url.dto';
+import { GenerateSignedUrlDto, SignedUrlOperation } from './dto/signed-url.dto';
+import { GalleryFolder } from './entities/gallery.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/role.decorator';
 import { Role } from '../users/user.entity';
 
-@ApiTags('gallery')
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;   // 10MB
+const MAX_VIDEO_SIZE = 200 * 1024 * 1024;  // 200MB
+
+// Broad check — accept anything image/* or video/*
+// Specific subtype validation is done below
+function isAllowedMime(mime: string): boolean {
+  if (!mime) return false;
+  const lower = mime.toLowerCase();
+  // Images
+  if (/^image\/(jpeg|jpg|png|gif|webp|heic|heif)$/.test(lower)) return true;
+  // Videos — iOS sends quicktime for .mov, Android sends mp4
+  if (/^video\/(mp4|quicktime|mov|avi|webm|x-msvideo|3gpp|x-matroska)$/.test(lower)) return true;
+  // Some devices send just 'video' or 'image' without subtype — accept and detect from filename
+  if (lower === 'video' || lower === 'image') return true;
+  return false;
+}
+
 @Controller('gallery')
 export class GalleryController {
   constructor(private readonly galleryService: GalleryService) {}
 
+  // POST /gallery/upload — admin only
   @Post('upload')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.STAFF)
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Upload a file to gallery' })
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-        },
-        folder: {
-          type: 'string',
-          enum: Object.values(GalleryFolder),
-          default: GalleryFolder.GALLERY,
-        },
-        description: { type: 'string' },
-        tags: { type: 'array', items: { type: 'string' } },
-        isPublic: { type: 'boolean', default: true },
-      },
-    },
-  })
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiResponse({
-    status: 201,
-    description: 'File uploaded successfully',
-    type: CreateGalleryResponseDto,
-  })
+  @Roles(Role.ADMIN, Role.STYLIST)
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: MAX_VIDEO_SIZE }, // set max at multer level (200MB)
+  }))
   async upload(
-    @UploadedFile(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }), // 10MB
-          new FileTypeValidator({ fileType: /(jpg|jpeg|png|gif|webp|pdf|doc|docx)$/ }),
-        ],
-      }),
-    )
-    file: Express.Multer.File,
-    @Body() createGalleryDto: CreateGalleryDto,
-    @Request() req,
-  ): Promise<CreateGalleryResponseDto> {
-    const gallery = await this.galleryService.create(
-      file,
-      createGalleryDto,
-      req.user?.id,
-    );
-    
-    return {
-      id: gallery.id,
-      url: gallery.url,
-      s3Key: gallery.s3Key,
-      originalName: gallery.originalName,
-    };
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: CreateGalleryDto,
+    @Request() req: any,
+  ) {
+    if (!file) throw new BadRequestException('No file uploaded. Make sure the field name is "file".');
+
+    // Determine if video by mime or filename extension
+    const mimeType = (file.mimetype ?? '').toLowerCase();
+    const filename = (file.originalname ?? '').toLowerCase();
+    const isVideoByExt = /\.(mp4|mov|avi|webm|mkv|3gp|m4v)$/.test(filename);
+    const isVideoByMime = mimeType.startsWith('video/') || mimeType === 'video';
+    const isImageByMime = mimeType.startsWith('image/') || mimeType === 'image';
+
+    if (!isAllowedMime(mimeType) && !isVideoByExt && !isImageByMime) {
+      throw new BadRequestException(
+        `File type "${file.mimetype}" is not supported. ` +
+        `Upload images (JPEG, PNG, WebP, HEIC) or videos (MP4, MOV, AVI, WebM).`
+      );
+    }
+
+    const isVideo = isVideoByMime || isVideoByExt;
+    const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+
+    if (file.size > maxSize) {
+      throw new BadRequestException(
+        `File too large. Max size: ${isVideo ? '200MB for videos' : '10MB for images'}.`
+      );
+    }
+
+    // If folder not provided default to premium_quality
+    if (!dto.folder) dto.folder = GalleryFolder.PREMIUM_QUALITY;
+
+    return this.galleryService.create(file, dto, req.user?.id);
   }
 
+  // GET /gallery — public, paginated
   @Get()
-  @ApiOperation({ summary: 'Get all gallery items with pagination' })
-  @ApiQuery({ name: 'folder', enum: GalleryFolder, required: false })
-  @ApiQuery({ name: 'tags', type: [String], required: false })
-  @ApiQuery({ name: 'page', type: Number, required: false, default: 1 })
-  @ApiQuery({ name: 'limit', type: Number, required: false, default: 20 })
-  @ApiResponse({
-    status: 200,
-    description: 'List of gallery items',
-    type: [GalleryResponseDto],
-  })
   async findAll(
     @Query('folder') folder?: GalleryFolder,
     @Query('tags') tags?: string,
     @Query('page') page = 1,
     @Query('limit') limit = 20,
   ) {
-    const tagsArray = tags ? tags.split(',') : undefined;
-    const skip = (page - 1) * limit;
-    
-    const result = await this.galleryService.findAll(folder, tagsArray, skip, limit);
-    return result;
+    const tagsArray = tags ? tags.split(',').map(t => t.trim()) : undefined;
+    const skip = (Number(page) - 1) * Number(limit);
+    return this.galleryService.findAll(folder, tagsArray, skip, Number(limit));
   }
 
+  // GET /gallery/search
   @Get('search')
-  @ApiOperation({ summary: 'Search gallery items' })
-  @ApiQuery({ name: 'q', required: true })
-  @ApiResponse({
-    status: 200,
-    description: 'Search results',
-    type: [GalleryResponseDto],
-  })
   async search(@Query('q') query: string) {
-    return await this.galleryService.search(query);
+    return this.galleryService.search(query ?? '');
   }
 
+  // GET /gallery/stats — admin only
+  @Get('stats/summary')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async getStats() {
+    return this.galleryService.getStatistics();
+  }
+
+  // GET /gallery/folder/:folder
   @Get('folder/:folder')
-  @ApiOperation({ summary: 'Get gallery items by folder' })
-  @ApiResponse({
-    status: 200,
-    description: 'Gallery items in the specified folder',
-    type: [GalleryResponseDto],
-  })
   async getByFolder(@Param('folder') folder: GalleryFolder) {
-    return await this.galleryService.getByFolder(folder);
+    return this.galleryService.getByFolder(folder);
   }
 
+  // GET /gallery/:id
   @Get(':id')
-  @ApiOperation({ summary: 'Get a gallery item by ID' })
-  @ApiResponse({
-    status: 200,
-    description: 'Gallery item details',
-    type: GalleryResponseDto,
-  })
-  async findOne(@Param('id') id: string): Promise<GalleryResponseDto> {
-    return await this.galleryService.findOne(id);
+  async findOne(@Param('id') id: string) {
+    return this.galleryService.findOne(id);
   }
 
+  // PATCH /gallery/:id — admin only
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.STAFF)
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Update a gallery item' })
-  @ApiResponse({
-    status: 200,
-    description: 'Updated gallery item',
-    type: GalleryResponseDto,
-  })
-  async update(
-    @Param('id') id: string,
-    @Body() updateGalleryDto: UpdateGalleryDto,
-  ): Promise<GalleryResponseDto> {
-    return await this.galleryService.update(id, updateGalleryDto);
+  @Roles(Role.ADMIN, Role.STYLIST)
+  async update(@Param('id') id: string, @Body() dto: UpdateGalleryDto) {
+    return this.galleryService.update(id, dto);
   }
 
+  // DELETE /gallery/:id — admin only
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.STAFF)
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Delete a gallery item' })
-  @ApiResponse({ status: 200, description: 'Gallery item deleted successfully' })
-  async remove(@Param('id') id: string): Promise<void> {
-    return await this.galleryService.remove(id);
+  @Roles(Role.ADMIN, Role.STYLIST)
+  async remove(@Param('id') id: string) {
+    await this.galleryService.remove(id);
+    return { message: 'Deleted successfully' };
   }
 
+  // POST /gallery/signed-url
   @Post('signed-url')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Generate a signed URL for private file access' })
-  @ApiResponse({
-    status: 200,
-    description: 'Signed URL generated',
-    type: SignedUrlResponseDto,
-  })
-  async generateSignedUrl(
-    @Body() generateSignedUrlDto: GenerateSignedUrlDto,
-  ): Promise<SignedUrlResponseDto> {
+  async generateSignedUrl(@Body() dto: GenerateSignedUrlDto) {
     const result = await this.galleryService.generateSignedUrl(
-      generateSignedUrlDto.key,
-      generateSignedUrlDto.operation || SignedUrlOperation.GET,
-      generateSignedUrlDto.expiresIn,
+      dto.key,
+      dto.operation || SignedUrlOperation.GET,
+      dto.expiresIn,
     );
-
     return {
       signedUrl: result.signedUrl,
       expiresAt: result.expiresAt,
       key: result.key,
-      operation: generateSignedUrlDto.operation || SignedUrlOperation.GET,
+      operation: dto.operation || SignedUrlOperation.GET,
     };
-  }
-
-  @Get('stats/summary')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Get gallery statistics (Admin only)' })
-  async getStatistics() {
-    return await this.galleryService.getStatistics();
   }
 }

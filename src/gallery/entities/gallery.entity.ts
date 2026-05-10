@@ -1,66 +1,75 @@
-// src/gallery/entities/gallery.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
+// src/gallery/gallery.entity.ts
 
-@Entity('galleries')
-export class Gallery {
-  @ApiProperty({ description: 'Unique identifier' })
+import {
+  Entity, PrimaryGeneratedColumn, Column,
+  CreateDateColumn, UpdateDateColumn,
+} from 'typeorm';
+
+export enum GalleryItemType {
+  IMAGE = 'image',
+  VIDEO = 'video',
+}
+
+// These match the 4 sections shown to clients in the gallery
+export enum GalleryFolder {
+  PREMIUM_QUALITY  = 'premium_quality',
+  QUICK_SERVICE    = 'quick_service',
+  EXPERT_STYLISTS  = 'expert_stylists',
+  HYGIENE_FIRST    = 'hygiene_first',
+}
+
+// Display labels shown in the UI
+export const FOLDER_LABELS: Record<GalleryFolder, string> = {
+  [GalleryFolder.PREMIUM_QUALITY]: 'Premium Quality',
+  [GalleryFolder.QUICK_SERVICE]:   'Quick Service',
+  [GalleryFolder.EXPERT_STYLISTS]: 'Expert Stylists',
+  [GalleryFolder.HYGIENE_FIRST]:   'Hygiene First',
+};
+
+@Entity('gallery_item')
+export class GalleryItem {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
-  @ApiProperty({ description: 'S3 key/path of the file' })
-  @Column()
-  s3Key: string;
+  @Column({ type: 'text' })
+  url!: string;
 
-  @ApiProperty({ description: 'Public URL of the file' })
-  @Column()
-  url: string;
+  @Column({ name: 's3_key', type: 'text' })
+  s3Key!: string;
 
-  @ApiProperty({ description: 'Original filename' })
-  @Column()
-  originalName: string;
+  @Column({ name: 'thumbnail_url', type: 'text', nullable: true })
+  thumbnailUrl?: string;
 
-  @ApiProperty({ description: 'File size in bytes' })
-  @Column('int')
-  fileSize: number;
+  @Column({ type: 'enum', enum: GalleryItemType, default: GalleryItemType.IMAGE })
+  type!: GalleryItemType;
 
-  @ApiProperty({ description: 'MIME type of the file' })
-  @Column()
-  mimeType: string;
+  @Column({ type: 'enum', enum: GalleryFolder, default: GalleryFolder.PREMIUM_QUALITY })
+  folder!: GalleryFolder;
 
-  @ApiProperty({ description: 'Folder/category of the file' })
-  @Column({ default: 'general' })
-  folder: string;
+  @Column({ name: 'original_name', type: 'text' })
+  originalName!: string;
 
-  @ApiProperty({ description: 'Description/alt text for the image' })
-  @Column({ nullable: true })
-  description: string;
+  @Column({ name: 'mime_type', type: 'varchar', length: 100 })
+  mimeType!: string;
 
-  @ApiProperty({ description: 'Tags for categorization' })
-  @Column('simple-array', { nullable: true })
-  tags: string[];
+  @Column({ name: 'file_size', type: 'int' })
+  fileSize!: number;
 
-  @ApiProperty({ description: 'Width in pixels (for images)' })
-  @Column('int', { nullable: true })
-  width: number;
+  @Column({ type: 'text', nullable: true })
+  caption?: string;
 
-  @ApiProperty({ description: 'Height in pixels (for images)' })
-  @Column('int', { nullable: true })
-  height: number;
+  @Column({ type: 'simple-array', nullable: true })
+  tags?: string[];
 
-  @ApiProperty({ description: 'Whether the file is public or requires signed URLs' })
-  @Column({ default: true })
-  isPublic: boolean;
+  @Column({ name: 'is_public', default: true })
+  isPublic!: boolean;
 
-  @ApiProperty({ description: 'Uploaded by user ID' })
-  @Column({ nullable: true })
-  uploadedBy: string;
+  @Column({ name: 'uploaded_by', nullable: true })
+  uploadedBy?: number;
 
-  @ApiProperty({ description: 'Creation timestamp' })
-  @CreateDateColumn()
-  createdAt: Date;
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
 
-  @ApiProperty({ description: 'Last update timestamp' })
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt!: Date;
 }

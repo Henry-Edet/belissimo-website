@@ -1,5 +1,8 @@
 // src/gallery/dto/update-gallery.dto.ts
-import { PartialType } from '@nestjs/swagger';
-import { CreateGalleryDto } from './create-gallery.dto';
+import { IsOptional, IsString, IsBoolean, IsArray } from 'class-validator';
 
-export class UpdateGalleryDto extends PartialType(CreateGalleryDto) {}
+export class UpdateGalleryDto {
+  @IsOptional() @IsString() caption?: string;
+  @IsOptional() @IsArray() tags?: string[];
+  @IsOptional() @IsBoolean() isPublic?: boolean;
+}

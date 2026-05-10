@@ -1,3 +1,4 @@
+// src/app.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
@@ -5,18 +6,18 @@ import { ServicesModule } from './services/services.module';
 import { BookingsModule } from './bookings/booking.module';
 import { PaymentsModule } from './payments/payments.module';
 import { AuthModule } from './auth/auth.module';
-import { ChatModule } from './chat/chat.module';
 import { AiModule } from './ai/ai.module';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { AwsModule } from './aws/aws.module';
 import { GalleryModule } from './gallery/gallery.module';
-
+import { NotificationModule } from './notifications/notification.module';
+import { UsersModule } from './users/users.module';
+import { AdminModule } from './admin/admin.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
+    ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST,
@@ -33,10 +34,13 @@ import { GalleryModule } from './gallery/gallery.module';
     BookingsModule,
     PaymentsModule,
     AuthModule,
-    ChatModule,
     AiModule,
     AwsModule,
     GalleryModule,
+    NotificationModule,
+    UsersModule,
+    AdminModule,
+    ReviewsModule,
   ],
 })
 export class AppModule {}

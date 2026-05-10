@@ -1,27 +1,32 @@
+// src/auth/auth.service.ts
+// Uses Role enum — no more raw strings for roles
+
 import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
-
-import { User } from '../users/user.entity';
-// import { UserRole } from '../users/user.entity';
+import { User, Role } from '../users/user.entity';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User)
     private userRepo: Repository<User>,
-    private jwt: JwtService
+    private jwt: JwtService,
   ) {}
 
-  async register(email: string, password: string, role: 'admin' | 'stylist' = 'admin') {
+  async register(
+    email: string,
+    password: string,
+    // ✅ Uses Role enum, defaults to CLIENT
+    role: Role = Role.CLIENT,
+  ) {
     const exists = await this.userRepo.findOne({ where: { email } });
     if (exists) throw new ForbiddenException('Email already taken');
 
     const passwordHash = await bcrypt.hash(password, 10);
-
-    const user = this.userRepo.create({ email, passwordHash, role: 'admin' });
+    const user = this.userRepo.create({ email, passwordHash, role });
     await this.userRepo.save(user);
 
     return { message: 'User created', email };
@@ -58,14 +63,20 @@ export class AuthService {
 
   async updateRefreshToken(userId: number, refreshToken: string) {
     const hash = await bcrypt.hash(refreshToken, 10);
+    // ✅ Use entity property name (refreshTokenHash), not column name (refresh_token_hash)
     await this.userRepo.update(userId, { refreshTokenHash: hash });
   }
 
   async refreshTokens(userId: number, refreshToken: string) {
-    const user = await this.userRepo.findOne({ where: { id: userId }});
-    if (!user || !user.refreshTokenHash) throw new ForbiddenException('Access Denied');
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    // ✅ Fixed: check refresh_token_hash not refreshTokenHash
+    if (!user || !(user as any).refresh_token_hash)
+      throw new ForbiddenException('Access Denied');
 
-    const valid = await bcrypt.compare(refreshToken, user.refreshTokenHash);
+    const valid = await bcrypt.compare(
+      refreshToken,
+      (user as any).refresh_token_hash,
+    );
     if (!valid) throw new ForbiddenException('Access Denied');
 
     const tokens = await this.generateTokens(user);
@@ -75,6 +86,7 @@ export class AuthService {
   }
 
   async logout(userId: number) {
-    await this.userRepo.update(userId, { refreshTokenHash: () => 'NULL' });
+    await this.userRepo.update(userId, { refreshTokenHash: undefined });
   }
+
 }

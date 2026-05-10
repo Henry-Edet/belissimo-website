@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req, ForbiddenException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -27,4 +27,5 @@ export class AuthController {
   logout(@Req() req) {
     return this.auth.logout(req.user.sub);
   }
+
 }

@@ -2,35 +2,54 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Service } from '../services/service.entity';
 
+export enum PaymentStatus {
+  NONE         = 'none',
+  DEPOSIT_PAID = 'deposit_paid',
+  OWING        = 'owing',
+  COMPLETED    = 'completed',
+}
+
 @Entity('booking')
 export class Booking {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
-  // Match EXACT column name from your database (camelCase with quotes)
   @Column({ name: 'serviceId' })
-  serviceId: string;
+  serviceId!: string;
 
-  // Map to the Service entity
   @ManyToOne(() => Service)
   @JoinColumn({ name: 'serviceId' })
-  service: Service;
+  service!: Service;
 
   @Column({ name: 'clientName' })
-  clientName: string;
+  clientName!: string;
 
   @Column({ name: 'clientPhone' })
-  clientPhone: string;
+  clientPhone!: string;
+
+  @Column({ name: 'userId', nullable: true })
+  userId?: number;
 
   @Column({ name: 'startAt', type: 'timestamptz' })
-  startAt: Date;
+  startAt!: Date;
 
   @Column({ name: 'endAt', type: 'timestamptz' })
-  endAt: Date;
+  endAt!: Date;
 
   @Column({ default: 'pending' })
-  status: string;
+  status!: string;
 
   @Column({ name: 'subServiceName', nullable: true })
   subServiceName?: string;
+
+  @Column({
+    name: 'payment_status',
+    type: 'enum',
+    enum: PaymentStatus,
+    default: PaymentStatus.NONE,
+  })
+  paymentStatus!: PaymentStatus;
+
+  @Column({ name: 'balance_cents', default: 0 })
+  balanceCents!: number;
 }
