@@ -1,13 +1,12 @@
-// app/services/catalog.ts
-import { View, Text } from 'react-native';
+// lib/catalog.ts
 export type ServiceId = 'installation' | 'braids' | 'wash';
 
 export type Service = {
   id: ServiceId;
   name: string;
-  price: number;              // in your local currency (display only)
+  price: number;         // in cents USD e.g. 35000 = $350.00
   durationMinutes: number;
-  image: any;                 // require(...) for now
+  image: any;
   description: string;
 };
 
@@ -15,7 +14,7 @@ export const SERVICE_CATALOG: Record<ServiceId, Service> = {
   installation: {
     id: 'installation',
     name: 'Wig Installation & Styling',
-    price: 35000,
+    price: 35000,        // $350.00
     durationMinutes: 120,
     image: require('../../assets/images/installation.jpg'),
     description:
@@ -24,7 +23,7 @@ export const SERVICE_CATALOG: Record<ServiceId, Service> = {
   braids: {
     id: 'braids',
     name: 'Braids & Cornrows',
-    price: 40000,
+    price: 40000,        // $400.00
     durationMinutes: 240,
     image: require('../../assets/images/braids.jpg'),
     description:
@@ -33,7 +32,7 @@ export const SERVICE_CATALOG: Record<ServiceId, Service> = {
   wash: {
     id: 'wash',
     name: 'Wash, Treat & Style',
-    price: 15000,
+    price: 15000,        // $150.00
     durationMinutes: 60,
     image: require('../../assets/images/washingHair.jpg'),
     description:

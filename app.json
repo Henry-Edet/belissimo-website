@@ -4,17 +4,15 @@
     "slug": "bellissimo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./../assets/icon.png",
+    "icon": "./assets/images/logo.png",
     "scheme": "bellissimo",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./../assets/splash.png",
+      "image": "./assets/images/logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#FFF8F9"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.bellissimo.hair"
@@ -22,13 +20,14 @@
     "android": {
       "package": "com.bellissimo.hair",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/logo.png",
+        "backgroundColor": "#FFF8F9"
       }
     },
     "plugins": [
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "backendUrl": "http://localhost:3000"
