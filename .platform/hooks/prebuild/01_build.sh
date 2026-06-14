@@ -1,4 +1,4 @@
 #!/bin/bash
 cd /var/app/staging
-npm install
-npm run build
+npm install --include=dev
+./node_modules/.bin/nest build
