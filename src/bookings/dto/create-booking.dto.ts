@@ -5,15 +5,15 @@ import { Transform } from 'class-transformer';
 export class CreateBookingDto {
   @IsNotEmpty()
   @IsString()
-  serviceId: string;
+  serviceId!: string;
 
   @IsNotEmpty()
   @IsString()
-  clientName: string;
+  clientName!: string;
 
   @IsNotEmpty()
   @IsString()
-  clientPhone: string; // Remove phone validation or make it optional
+  clientPhone!: string; // Remove phone validation or make it optional
 
   @IsNotEmpty()
   @Transform(({ value }) => {
@@ -21,7 +21,7 @@ export class CreateBookingDto {
     const date = new Date(value);
     return isNaN(date.getTime()) ? value : date;
   })
-  startAt: Date | string;
+  startAt!: Date | string;
 
   @IsOptional()
   @Transform(({ value }) => value ? new Date(value) : undefined)

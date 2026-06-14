@@ -178,6 +178,31 @@ export class PaymentsService {
   // ── Manual Payment Notification (Bank Transfer / Crypto) ──────────────────
 
   // Client calls this after making a bank transfer or crypto payment
+  // ── Email-only notification for deposit proof (no DB record) ─────────────
+  async notifyDepositEmail(dto: {
+    bookingId: number;
+    clientName: string;
+    clientPhone?: string;
+    amountCents: number;
+    paymentMethod: 'bank_transfer' | 'crypto';
+  }): Promise<{ message: string }> {
+    const booking = await this.bookingRepo.findOne({ where: { id: dto.bookingId } });
+    if (!booking) return { message: 'Booking not found — email not sent' };
+
+    const methodLabel = dto.paymentMethod === 'bank_transfer' ? 'Bank Transfer' : 'Crypto Transfer';
+    const amountLabel = `$${(dto.amountCents / 100).toFixed(2)}`;
+
+    await this.notifications.sendOwnerEmail(
+      `💳 Deposit Proof Sent — Booking #${dto.bookingId}`,
+      `${dto.clientName} has sent deposit proof via ${methodLabel} for booking #${dto.bookingId}.\n\n` +
+      `Amount: ${amountLabel}\n` +
+      `Phone: ${dto.clientPhone ?? 'Not provided'}\n\n` +
+      `Please check your ${dto.paymentMethod === 'bank_transfer' ? 'GTBank account' : 'crypto wallet'} to verify the payment, then confirm the booking in your Admin → Bookings tab.`,
+    );
+
+    return { message: 'Admin notified by email' };
+  }
+
   async notifyManualPayment(dto: {
     bookingId: number;
     clientName: string;

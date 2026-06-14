@@ -1,46 +1,88 @@
+// src/services/services.controller.ts
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Patch,
-  Delete,
+  Controller, Get, Post, Patch, Delete,
+  Body, Param, UseGuards, UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ServicesService } from './services.service';
-import { Service } from './service.entity';
-import { CreateServiceDto } from './dto/create-service.dto';
-import { UpdateServiceDto } from './dto/update-service.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/role.decorator';
+import { Role } from '../users/user.entity';
 
 @Controller('services')
 export class ServicesController {
   constructor(private readonly servicesService: ServicesService) {}
 
+  // ── GET /services ── public ───────────────────────────────────────────────
   @Get()
-  getAll(): Promise<Service[]> {
+  findAll() {
     return this.servicesService.findAll();
   }
 
+  // ── GET /services/:id ─────────────────────────────────────────────────────
   @Get(':id')
-  getOne(@Param('id') id: string): Promise<Service> {
+  findOne(@Param('id') id: string) {
     return this.servicesService.findOne(id);
   }
 
+  // ── POST /services ── admin creates a new service ─────────────────────────
   @Post()
-  create(@Body() data: CreateServiceDto): Promise<Service> {
-    return this.servicesService.create(data);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @UseInterceptors(FileInterceptor('image'))
+  async create(
+    @Body() body: {
+      name: string;
+      priceCents: string;
+      durationMinutes: string;
+      description?: string;
+      tag?: string;
+    },
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.servicesService.createService({
+      name: body.name,
+      priceCents: parseInt(body.priceCents, 10),
+      durationMinutes: parseInt(body.durationMinutes, 10),
+      description: body.description,
+      tag: body.tag,
+      imageFile: file,
+    });
   }
 
+  // ── PATCH /services/:id ── admin updates price, name, duration, etc ───────
   @Patch(':id')
-  update(
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @UseInterceptors(FileInterceptor('image'))
+  async update(
     @Param('id') id: string,
-    @Body() data: UpdateServiceDto,
-  ): Promise<Service> {
-    return this.servicesService.update(id, data);
+    @Body() body: {
+      name?: string;
+      priceCents?: string;
+      durationMinutes?: string;
+      description?: string;
+      tag?: string;
+    },
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.servicesService.updateService(id, {
+      name: body.name,
+      priceCents: body.priceCents ? parseInt(body.priceCents, 10) : undefined,
+      durationMinutes: body.durationMinutes ? parseInt(body.durationMinutes, 10) : undefined,
+      description: body.description,
+      tag: body.tag,
+      imageFile: file,
+    });
   }
 
+  // ── DELETE /services/:id ── admin removes a service ───────────────────────
   @Delete(':id')
-  delete(@Param('id') id: string): Promise<void> {
-    return this.servicesService.remove(id);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async remove(@Param('id') id: string) {
+    return this.servicesService.deleteService(id);
   }
 }

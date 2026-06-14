@@ -4,10 +4,10 @@ import { Transform } from 'class-transformer';
 
 export class CheckAvailabilityDto {
   @IsString()
-  serviceId: string;
+  serviceId!: string;
 
   @IsDateString()
-  startAt: string;
+  startAt!: string;
 
   @IsOptional()
   @IsNumber()

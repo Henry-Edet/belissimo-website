@@ -25,13 +25,13 @@ export enum Role {
 export class User {
 
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column({ unique: true })
-  email: string;
+  email!: string;
 
   @Column({ name: 'password_hash' })
-  passwordHash: string;
+  passwordHash!: string;
 
   // ✅ Enum constraint — only 'admin' | 'stylist' | 'client' allowed in DB
   // ✅ Default is 'client' — safe for public registration
@@ -40,7 +40,7 @@ export class User {
     enum: Role,
     default: Role.CLIENT,
   })
-  role: Role;
+  role!: Role;
 
   // ── Profile ────────────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ export class User {
   // ── Verification ───────────────────────────────────────────────────────────
 
   @Column({ name: 'is_verified', default: false })
-  isVerified: boolean;
+  isVerified!: boolean;
 
   @Column({ name: 'verification_token', nullable: true })
   verificationToken?: string;
@@ -82,9 +82,9 @@ export class User {
 
   // ✅ CreateDateColumn auto-sets on INSERT, never changes after
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  createdAt!: Date;
 
   // ✅ UpdateDateColumn auto-updates on every SAVE — no manual handling needed
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  updatedAt!: Date;
 }

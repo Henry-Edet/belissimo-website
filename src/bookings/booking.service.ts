@@ -81,6 +81,14 @@ export class BookingService {
     });
   }
 
+  // Used by Bella to check if client has outstanding balance before allowing new booking
+  async findByClientPhone(clientPhone: string): Promise<Booking[]> {
+    return this.bookingRepository.find({
+      where: { clientPhone },
+      order: { startAt: 'DESC' },
+    });
+  }
+
   async checkAvailability(
     serviceId: string,
     startAt: Date,

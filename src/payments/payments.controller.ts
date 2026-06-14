@@ -74,8 +74,20 @@ export class PaymentsController {
 
   // ── Manual Payments (Bank Transfer / Crypto) ──────────────────────────────
 
-  // POST /payments/notify
-  // Client calls this after bank transfer or crypto balance payment
+  // POST /payments/notify-deposit
+  // Client sent deposit proof via bank/crypto — email admin only
+  // Does NOT create a PaymentNotification record (deposits don't appear in Payments tab)
+  @Post('notify-deposit')
+  @UseGuards(JwtOptionalGuard)
+  async notifyDeposit(@Body() body: {
+    bookingId: number;
+    clientName: string;
+    clientPhone?: string;
+    amountCents: number;
+    paymentMethod: 'bank_transfer' | 'crypto';
+  }) {
+    return this.paymentsService.notifyDepositEmail(body);
+  }
   // ONLY for balance payments — deposits never create notifications
   @Post('notify')
   @UseGuards(JwtOptionalGuard)
