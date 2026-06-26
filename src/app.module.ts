@@ -15,6 +15,8 @@ import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
 import { ReviewsModule } from './reviews/reviews.module';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -28,7 +30,8 @@ import { ReviewsModule } from './reviews/reviews.module';
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       namingStrategy: new SnakeNamingStrategy(),
       autoLoadEntities: true,
-      synchronize: false,
+      synchronize: true, // ← creates tables on first run, we disable after
+      ssl: isProduction ? { rejectUnauthorized: false } : false,
     }),
     ServicesModule,
     BookingsModule,
