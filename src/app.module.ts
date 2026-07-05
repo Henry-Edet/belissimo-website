@@ -30,7 +30,7 @@ const isProduction = process.env.NODE_ENV === 'production';
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       namingStrategy: new SnakeNamingStrategy(),
       autoLoadEntities: true,
-      synchronize: true, // ← creates tables on first run, we disable after
+      synchronize: false, // ← creates tables on first run, we disable after
       ssl: isProduction ? { rejectUnauthorized: false } : false,
     }),
     ServicesModule,

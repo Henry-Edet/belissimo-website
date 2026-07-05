@@ -1,5 +1,3 @@
-// src/migrations/1772310458580-AddRoleEnumAndFixColumns.ts
-
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddRoleEnumAndFixColumns1772310458580 implements MigrationInterface {
@@ -15,12 +13,21 @@ export class AddRoleEnumAndFixColumns1772310458580 implements MigrationInterface
       END $$;
     `);
 
-    // 2. Normalize stale values so casting succeeds
-    await queryRunner.query(`UPDATE "user" SET "role" = 'admin'   WHERE "role" = 'ADMIN'`);
-    await queryRunner.query(`UPDATE "user" SET "role" = 'stylist' WHERE "role" = 'STAFF' OR "role" = 'STYLIST'`);
-    await queryRunner.query(`UPDATE "user" SET "role" = 'client'  WHERE "role" = 'USER' OR "role" = 'CLIENT'`);
+    // 2. Normalize stale values only if column is still varchar (skip on fresh DB)
+    await queryRunner.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'user' AND column_name = 'role' AND data_type = 'character varying'
+        ) THEN
+          UPDATE "user" SET "role" = 'admin'   WHERE "role" = 'ADMIN';
+          UPDATE "user" SET "role" = 'stylist' WHERE "role" IN ('STAFF', 'STYLIST');
+          UPDATE "user" SET "role" = 'client'  WHERE "role" IN ('USER', 'CLIENT');
+        END IF;
+      END $$;
+    `);
 
-    // 3. ✅ DROP DEFAULT before type change — PostgreSQL can't cast varchar default to enum
+    // 3. Drop default before type change
     await queryRunner.query(`ALTER TABLE "user" ALTER COLUMN "role" DROP DEFAULT`);
 
     // 4. Change column type to enum
@@ -30,7 +37,7 @@ export class AddRoleEnumAndFixColumns1772310458580 implements MigrationInterface
       USING "role"::"public"."user_role_enum"
     `);
 
-    // 5. ✅ Set new default AFTER type change
+    // 5. Set new default after type change
     await queryRunner.query(`ALTER TABLE "user" ALTER COLUMN "role" SET DEFAULT 'client'`);
 
     // 6. Rename passwordHash → password_hash if old column still exists
@@ -55,7 +62,6 @@ export class AddRoleEnumAndFixColumns1772310458580 implements MigrationInterface
     `);
     await queryRunner.query(`ALTER TABLE "user" ALTER COLUMN "role" SET DEFAULT 'admin'`);
     await queryRunner.query(`DROP TYPE IF EXISTS "public"."user_role_enum"`);
-
     await queryRunner.query(`
       DO $$ BEGIN
         IF EXISTS (
