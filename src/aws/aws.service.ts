@@ -23,8 +23,9 @@ export class AwsService {
   private readonly region: string;
 
   constructor(private readonly config: ConfigService) {
-    this.region = this.config.get<string>('AWS_REGION') ?? 'us-east-1';
-    this.bucket = this.config.get<string>('AWS_S3_BUCKET') ?? 'belissimo-backend-uploads-12';
+    this.region = this.config.get<string>('AWS_REGION') ?? 'eu-central-1';
+    this.bucket = this.config.get<string>('AWS_S3_BUCKET_NAME') ?? this.config.get<string>('AWS_S3_BUCKET') ?? 'bellissimo-gallery';
+
     this.s3 = new S3Client({
       region: this.region,
       credentials: {
