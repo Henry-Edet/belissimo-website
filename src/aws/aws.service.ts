@@ -26,6 +26,8 @@ export class AwsService {
     this.region = this.config.get<string>('AWS_REGION') ?? 'eu-central-1';
     this.bucket = this.config.get<string>('AWS_S3_BUCKET_NAME') ?? this.config.get<string>('AWS_S3_BUCKET') ?? 'bellissimo-gallery';
 
+    this.logger.log(`S3 config — bucket: ${this.bucket} | region: ${this.region} | keyId: ${(this.config.get<string>('AWS_ACCESS_KEY_ID') ?? '').slice(0, 8)}...`);
+
     this.s3 = new S3Client({
       region: this.region,
       credentials: {
