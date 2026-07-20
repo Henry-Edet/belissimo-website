@@ -10,18 +10,16 @@ export enum GalleryItemType {
   VIDEO = 'video',
 }
 
-// These match the 4 sections shown to clients in the gallery
 export enum GalleryFolder {
   PREMIUM_QUALITY  = 'premium_quality',
-  QUICK_SERVICE    = 'quick_service',
+  BEFORE_AFTER     = 'before_after',
   EXPERT_STYLISTS  = 'expert_stylists',
   HYGIENE_FIRST    = 'hygiene_first',
 }
 
-// Display labels shown in the UI
 export const FOLDER_LABELS: Record<GalleryFolder, string> = {
   [GalleryFolder.PREMIUM_QUALITY]: 'Premium Quality',
-  [GalleryFolder.QUICK_SERVICE]:   'Quick Service',
+  [GalleryFolder.BEFORE_AFTER]:    'Before & After',
   [GalleryFolder.EXPERT_STYLISTS]: 'Expert Stylists',
   [GalleryFolder.HYGIENE_FIRST]:   'Hygiene First',
 };
@@ -43,8 +41,8 @@ export class GalleryItem {
   @Column({ type: 'enum', enum: GalleryItemType, default: GalleryItemType.IMAGE })
   type!: GalleryItemType;
 
-  @Column({ type: 'enum', enum: GalleryFolder, default: GalleryFolder.PREMIUM_QUALITY })
-  folder!: GalleryFolder;
+  @Column({ type: 'varchar', length: 50, default: 'premium_quality' })
+  folder!: string;
 
   @Column({ name: 'original_name', type: 'text' })
   originalName!: string;
