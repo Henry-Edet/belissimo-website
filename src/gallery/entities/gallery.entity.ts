@@ -1,4 +1,4 @@
-// src/gallery/gallery.entity.ts
+// src/gallery/entities/gallery.entity.ts
 
 import {
   Entity, PrimaryGeneratedColumn, Column,
