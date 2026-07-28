@@ -49,7 +49,7 @@ export class AuthService {
     const payload = { sub: user.id, email: user.email, role: user.role };
 
     const accessToken = await this.jwt.signAsync(payload, {
-      expiresIn: '15m',
+      expiresIn: '1h',
       secret: process.env.JWT_ACCESS_SECRET,
     });
 
@@ -88,5 +88,4 @@ export class AuthService {
   async logout(userId: number) {
     await this.userRepo.update(userId, { refreshTokenHash: undefined });
   }
-
 }

@@ -74,6 +74,13 @@ async function bootstrap() {
   });
 
   // ── Read PORT from environment — Elastic Beanstalk uses 8080 ──
+  // Keep-alive ping every 14 minutes to prevent Render free tier cold starts
+  setInterval(async () => {
+    try {
+      await fetch(`https://bellissimo-backend.onrender.com/bookings/stats`);
+    } catch {}
+  }, 14 * 60 * 1000);
+
   const port = process.env.PORT ?? 8080;
   await app.listen(port, '0.0.0.0');
   console.log('============================================');
