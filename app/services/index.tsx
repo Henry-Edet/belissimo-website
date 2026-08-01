@@ -2,7 +2,7 @@
 import React from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Image,
-  ScrollView, Platform, Alert,
+  ScrollView, Platform, Alert, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MotiView } from 'moti';
@@ -12,19 +12,56 @@ import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
 import { API_BASE_URL } from '@/lib/config';
 
-const SERVICES = [
-  { id: 'installation', title: 'Wig Installation & Styling', subtitle: 'Frontals, closures, ponytails, revamps', price: 'From $250', duration: '2 hrs', image: require('../../assets/images/installation.jpg'), accent: '#B89FA1', tag: 'Most Popular' },
-  { id: 'braids', title: 'Braids & Cornrows', subtitle: 'Knotless, boho, fulani, cornrows', price: 'From $300', duration: '4 hrs', image: require('../../assets/images/braids.jpg'), accent: '#C9A8A5', tag: 'Trending' },
-  { id: 'wash', title: 'Wash & Care', subtitle: 'Wash, condition, treatment & drying', price: 'From $50', duration: '1 hr', image: require('../../assets/images/washingHair.jpg'), accent: '#D6BFC1', tag: 'Quick Service' },
-];
+const LOCAL_IMAGES: Record<string, any> = {
+  installation: require('../../assets/images/installation.jpg'),
+  braids:       require('../../assets/images/braids.jpg'),
+  wash:         require('../../assets/images/washingHair.jpg'),
+};
+const PLACEHOLDER = require('../../assets/images/logo.png');
+const ACCENTS = ['#B89FA1', '#C9A8A5', '#D6BFC1', '#9D7A7D', '#7C5E60'];
+
+function mapService(s: any, idx: number) {
+  const n = s.name?.toLowerCase() ?? '';
+  const localKey = n.includes('install') || n.includes('wig') ? 'installation'
+    : n.includes('braid') || n.includes('corn') ? 'braids'
+    : n.includes('wash') || n.includes('care') ? 'wash'
+    : null;
+  const mins = s.durationMinutes ?? 60;
+  const hrs = mins >= 60 ? `${(mins / 60).toFixed(0)} hr${mins >= 120 ? 's' : ''}` : `${mins} min`;
+  return {
+    id: s.id,
+    slug: localKey ?? s.id,
+    title: s.name,
+    subtitle: s.description?.split('.')[0] ?? s.name,
+    price: `From $${((s.priceCents ?? 0) / 100).toFixed(0)}`,
+    duration: hrs,
+    tag: s.tag ?? '',
+    accent: ACCENTS[idx % ACCENTS.length],
+    image: s.imageUrl ? { uri: s.imageUrl } : localKey ? LOCAL_IMAGES[localKey] : PLACEHOLDER,
+  };
+}
 
 export default function ServicesIndexScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { isAuthenticated, getAuthHeaders } = useAuth();
   const [isOwing, setIsOwing] = React.useState(false);
+  const [services, setServices] = React.useState<ReturnType<typeof mapService>[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    // Fetch live services from backend
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/services`);
+        if (res.ok) {
+          const data = await res.json();
+          setServices(data.map(mapService));
+        }
+      } catch {} finally { setLoading(false); }
+    })();
+
+    // Check owing status
     if (!isAuthenticated) return;
     (async () => {
       try {
@@ -38,9 +75,7 @@ export default function ServicesIndexScreen() {
     })();
   }, [isAuthenticated]);
 
-  const handleBack = () => {
-    router.replace('/(tabs)');
-  };
+  const handleBack = () => router.replace('/(tabs)');
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.bg }]} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
@@ -51,14 +86,12 @@ export default function ServicesIndexScreen() {
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerText}>
-
-      {/* Owing banner */}
-      {isOwing && (
-        <View style={styles.owingBanner}>
-          <Ionicons name="alert-circle" size={18} color="#fff" />
-          <Text style={styles.owingBannerText}>You have an outstanding balance. Please pay before booking a new service.</Text>
-        </View>
-      )}
+          {isOwing && (
+            <View style={styles.owingBanner}>
+              <Ionicons name="alert-circle" size={18} color="#fff" />
+              <Text style={styles.owingBannerText}>You have an outstanding balance. Please pay before booking a new service.</Text>
+            </View>
+          )}
           <Text style={styles.headerLabel}>Bellissimo Hair Studio</Text>
           <Text style={styles.headerTitle}>Our Services</Text>
         </View>
@@ -68,58 +101,54 @@ export default function ServicesIndexScreen() {
         Select a category to explore styles and book your appointment
       </Text>
 
-      {/* ── Cards ── */}
-      {SERVICES.map((service, idx) => (
-        <MotiView
-          key={service.id}
-          from={{ opacity: 0, translateY: 30 }}
-          animate={{ opacity: 1, translateY: 0 }}
-          transition={{ delay: 200 + idx * 120, duration: 500 }}
-        >
-          <TouchableOpacity activeOpacity={0.92} onPress={() => router.push(`/services/${service.id}` as any)}>
-            <View style={styles.card}>
-              <Image source={service.image} style={styles.cardImage} />
-              <LinearGradient colors={['transparent', 'rgba(0,0,0,0.72)']} style={styles.cardGradient} />
-              <View style={[styles.tag, { backgroundColor: service.accent }]}>
-                <Text style={styles.tagText}>{service.tag}</Text>
-              </View>
-              <View style={styles.cardContent}>
-                <View style={styles.cardTop}>
-                  <Text style={styles.cardTitle}>{service.title}</Text>
-                  <Text style={styles.cardPrice}>{service.price}</Text>
-                </View>
-                <Text style={styles.cardSubtitle}>{service.subtitle}</Text>
-                <View style={styles.metaRow}>
-                  <View style={styles.metaItem}>
-                    <MaterialIcons name="schedule" size={14} color="rgba(255,255,255,0.8)" />
-                    <Text style={styles.metaText}>{service.duration}</Text>
+      {loading ? (
+        <ActivityIndicator color="#9D7A7D" style={{ marginTop: 40 }} />
+      ) : (
+        services.map((service, idx) => (
+          <MotiView key={service.id} from={{ opacity: 0, translateY: 30 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 200 + idx * 120, duration: 500 }}>
+            <TouchableOpacity activeOpacity={0.92} onPress={() => router.push(`/services/${service.slug}` as any)}>
+              <View style={styles.card}>
+                <Image source={service.image} style={styles.cardImage} />
+                <LinearGradient colors={['transparent', 'rgba(0,0,0,0.72)']} style={styles.cardGradient} />
+                {service.tag ? (
+                  <View style={[styles.tag, { backgroundColor: service.accent }]}>
+                    <Text style={styles.tagText}>{service.tag}</Text>
                   </View>
-                  <TouchableOpacity
-                    style={[styles.bookBtn, { backgroundColor: isOwing ? '#B89FA1' : service.accent }]}
-                    onPress={() => {
-                      if (isOwing) {
-                        Alert.alert('Outstanding Balance', 'Please clear your outstanding balance before booking.');
-                        return;
-                      }
-                      router.push(`/services/${service.id}` as any);
-                    }}
-                  >
-                    <Text style={styles.bookBtnText}>{isOwing ? 'Balance Owing' : 'Book Now'}</Text>
-                    <MaterialIcons name={isOwing ? 'lock' : 'arrow-forward'} size={14} color="#fff" />
-                  </TouchableOpacity>
+                ) : null}
+                <View style={styles.cardContent}>
+                  <View style={styles.cardTop}>
+                    <Text style={styles.cardTitle}>{service.title}</Text>
+                    <Text style={styles.cardPrice}>{service.price}</Text>
+                  </View>
+                  <Text style={styles.cardSubtitle}>{service.subtitle}</Text>
+                  <View style={styles.metaRow}>
+                    <View style={styles.metaItem}>
+                      <MaterialIcons name="schedule" size={14} color="rgba(255,255,255,0.8)" />
+                      <Text style={styles.metaText}>{service.duration}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.bookBtn, { backgroundColor: isOwing ? '#B89FA1' : service.accent }]}
+                      onPress={() => {
+                        if (isOwing) { Alert.alert('Outstanding Balance', 'Please clear your outstanding balance before booking.'); return; }
+                        router.push(`/services/${service.slug}` as any);
+                      }}
+                    >
+                      <Text style={styles.bookBtnText}>{isOwing ? 'Balance Owing' : 'Book Now'}</Text>
+                      <MaterialIcons name={isOwing ? 'lock' : 'arrow-forward'} size={14} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          </TouchableOpacity>
-        </MotiView>
-      ))}
+            </TouchableOpacity>
+          </MotiView>
+        ))
+      )}
 
-      {/* ── Footer ── */}
+      {/* Footer */}
       <View style={styles.footer}>
         <MaterialIcons name="info-outline" size={16} color="#B89FA1" />
         <Text style={styles.footerText}>All prices are starting rates. Final price depends on style selected.</Text>
       </View>
-
     </ScrollView>
   );
 }
@@ -167,8 +196,8 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
   bookBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, gap: 5 },
   bookBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  owingBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 20, marginBottom: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#E74C3C', borderRadius: 12 },
-  owingBannerText: { flex: 1, fontSize: 13, color: '#fff', fontWeight: '500', lineHeight: 18 },
   footer: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginHorizontal: 24, marginTop: 4 },
   footerText: { flex: 1, fontSize: 13, color: '#B89FA1', lineHeight: 18 },
+  owingBanner: { backgroundColor: '#E53E3E', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 20, marginBottom: 12, borderRadius: 12 },
+  owingBannerText: { color: '#fff', fontSize: 13, fontWeight: '600', flex: 1, lineHeight: 18 },
 });

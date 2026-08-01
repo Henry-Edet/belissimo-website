@@ -15,10 +15,10 @@ import { useRouter } from 'expo-router';
 import { MotiView } from 'moti';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth-context';
-
+import { useTheme } from '@/lib/theme-context';
 import { ENDPOINTS } from '@/lib/config';
 
-const BROWN = '#9D7A7D';
+const BROWN = '#8B5E5E';
 
 interface UserProfile {
   id: number;
@@ -33,7 +33,8 @@ interface UserProfile {
 export default function ProfileScreen() {
   const router = useRouter();
   const { isAuthenticated, user, logout, getAuthHeaders } = useAuth();
-
+  const { colors } = useTheme();
+  const BROWN = colors.primary;
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,9 +71,19 @@ export default function ProfileScreen() {
         setFirstName(data.firstName ?? '');
         setLastName(data.lastName ?? '');
         setPhone(data.phone ?? '');
+      } else if (res.status === 401) {
+        // Token expired — use auth user data as fallback so profile doesn't show dashes
+        if (user) {
+          const fallback = { email: user.email, role: user.role } as UserProfile;
+          setProfile(fallback);
+        }
       }
     } catch (e) {
-      console.error('Error fetching profile:', e);
+      // Network error — use auth user data as fallback
+      if (user) {
+        const fallback = { email: user.email, role: user.role } as UserProfile;
+        setProfile(fallback);
+      }
     } finally {
       setLoading(false);
     }
@@ -170,7 +181,10 @@ export default function ProfileScreen() {
     );
   }
 
-  const displayName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || 'Client';
+  const displayName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') 
+    || profile?.email?.split('@')[0] 
+    || user?.email?.split('@')[0] 
+    || 'Profile';
   const initials = displayName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 
   return (
@@ -301,9 +315,9 @@ export default function ProfileScreen() {
                 style={styles.eyesOnlyCard}
               >
                 <Text style={styles.eyesOnlyText}>
-                  {"Hey! so i've been thinking of how not to make this lengthy but also not too short to pass the message. I am sorry for bringing us to where we are, maybe it wasn't meant to be or maybe i don't know what the future holds. Hurt has a way of teaching painful lessons and i've gained it's wisdom in extreme pain. I pray whoever he is, treats you better than i did. I pray he is intentional with you, i pray he cultivates you, i pray he guards you with his life. I regret so badly missing your 25th and silver jubilee; i was a serious fool for that. So i put everything i had into building this for you. I don't know how long it'll serve you but for as long as it's active, i hope those memories never fade. Never give up, you've come a long way and i'm honored to have witnessed it. Guess some stories have an end, mine in yours has come to an abrupt end unfortunately but the best is yet ahead of you. FOCUS GRACE!! SEE YOU AT THE TOP"}
+                  {"Hey! so i've been thinking of how not to make this lengthy but also not too short to pass the message. I am proud of you! I wish nothing but the best for you. Have the best life has to offer."}
                 </Text>
-                <Text style={styles.eyesOnlySign}>{"---for the last time...BEST BUD"}</Text>
+                <Text style={styles.eyesOnlySign}>{"---for the last time...BEST BUD🫂"}</Text>
               </MotiView>
             )}
           </>

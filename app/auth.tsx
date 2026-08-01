@@ -34,24 +34,38 @@ export default function AuthScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Required', 'Please enter your email and password'); return;
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail) {
+      Alert.alert('Required', 'Please enter your email address'); return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       Alert.alert('Invalid Email', 'Please enter a valid email address'); return;
     }
-    if (password.length < 6) {
+    if (!trimmedPassword) {
+      Alert.alert('Required', 'Please enter your password'); return;
+    }
+    if (trimmedPassword.length < 6) {
       Alert.alert('Weak Password', 'Password must be at least 6 characters'); return;
     }
-    if (mode === 'register' && password !== confirmPassword) {
-      Alert.alert('Mismatch', 'Passwords do not match'); return;
+    if (mode === 'register') {
+      if (!confirmPassword.trim()) {
+        Alert.alert('Required', 'Please confirm your password'); return;
+      }
+      if (trimmedPassword !== confirmPassword.trim()) {
+        Alert.alert('Mismatch', 'Passwords do not match'); return;
+      }
     }
     try {
-      if (mode === 'login') await login(email.trim(), password);
-      else await register(email.trim(), password);
+      if (mode === 'login') await login(trimmedEmail, trimmedPassword);
+      else await register(trimmedEmail, trimmedPassword);
       router.replace('/(tabs)');
     } catch (err: any) {
-      Alert.alert(mode === 'login' ? 'Login Failed' : 'Registration Failed', err.message || 'Something went wrong.');
+      Alert.alert(
+        mode === 'login' ? 'Login Failed' : 'Registration Failed',
+        err.message || 'Something went wrong. Please try again.'
+      );
     }
   };
 

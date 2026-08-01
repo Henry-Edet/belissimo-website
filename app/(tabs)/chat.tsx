@@ -10,7 +10,9 @@ import {
   ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import { ENDPOINTS, API_BASE_URL } from '@/lib/config';
+import { useNotificationSound } from '@/lib/use-notification-sound';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 
@@ -33,15 +35,17 @@ const WELCOME: Message = {
 export default function ChatScreen() {
   const { getAuthHeaders, user } = useAuth();
   const { colors } = useTheme();
+  const router = useRouter();
+  const { playSound } = useNotificationSound();
 
   // Each logged-in user gets their own storage key
   // Guests share 'guest' — fine since they have no account
   const userId = user?.id ? `user_${user.id}` : 'guest';
   const storageKey = `bellissimo_chat_${userId}`;
 
-  // Full name for admin to see in session list
+  // Client identifier for admin session list
   const clientName = user
-    ? [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || 'Client'
+    ? user.email || 'Client'
     : null;
 
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
@@ -115,6 +119,8 @@ export default function ChatScreen() {
 
         if (newMsgs.length > 0) {
           setMessages(prev => [...prev, ...newMsgs]);
+          // Play bellaChat sound for new admin message
+          playSound('bellaChat');
         }
       } catch {}
     }, 5000);
@@ -146,6 +152,12 @@ export default function ChatScreen() {
 
       const data = await res.json();
 
+      // If admin has taken over — no Bella reply, just wait silently
+      if (data.takenOver && !data.reply) {
+        setLoading(false);
+        return;
+      }
+
       const botMsg: Message = {
         id: Date.now() + 1,
         sender: 'bot',
@@ -153,10 +165,22 @@ export default function ChatScreen() {
         timestamp: Date.now(),
       };
       setMessages(prev => [...prev, botMsg]);
+      playSound('bellaChat'); // play sound on new Bella message
+
+      // If booking created and awaiting payment method — show payment buttons
+      if (data.awaitingPaymentMethod && data.bookingId && data.amountCents) {
+        const paymentChoiceMsg: Message = {
+          id: Date.now() + 2,
+          sender: 'bot',
+          text: `__PAYMENT_OPTIONS__${data.bookingId}__${data.amountCents}`,
+          timestamp: Date.now(),
+        };
+        setMessages(prev => [...prev, paymentChoiceMsg]);
+      }
 
       if (data.action === 'CREATE_BOOKING_AND_PAYMENT' && data.paymentUrl) {
         setMessages(prev => [...prev, {
-          id: Date.now() + 2,
+          id: Date.now() + 3,
           sender: 'bot',
           text: `Here is your payment link:\n${data.paymentUrl}`,
           timestamp: Date.now(),
@@ -210,23 +234,64 @@ export default function ChatScreen() {
         contentContainerStyle={styles.chatContent}
         showsVerticalScrollIndicator={false}
       >
-        {messages.map((msg) => (
-          <View key={msg.id} style={[
-            styles.bubble,
-            msg.sender === 'user'
-              ? [styles.userBubble, { backgroundColor: colors.primary }]
-              : [styles.botBubble, { backgroundColor: colors.card, borderColor: colors.border }],
-          ]}>
-            <Text style={[
-              styles.bubbleText,
+        {messages.map((msg) => {
+          // Special payment options card
+          if (msg.text.startsWith('__PAYMENT_OPTIONS__')) {
+            const parts = msg.text.split('__');
+            const bookingId = parts[2];
+            const amountCents = parseInt(parts[3]);
+            return (
+              <View key={msg.id} style={[styles.botBubble, { backgroundColor: colors.card, borderColor: colors.border, padding: 16, maxWidth: '92%', alignSelf: 'flex-start' }]}>
+                <Text style={[styles.bubbleText, { color: colors.text, fontWeight: '700', marginBottom: 12 }]}>
+                  Choose payment method:
+                </Text>
+                {[
+                  { label: '💳 Card (Stripe)', method: 'card', color: '#4A6FA5' },
+                  { label: '🏦 Bank Transfer (GTBank)', method: 'bank', color: '#38A169' },
+                  { label: '₿ Crypto (USDT/BTC/ETH)', method: 'crypto', color: '#D69E2E' },
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={opt.method}
+                    style={{ backgroundColor: opt.color, borderRadius: 20, paddingVertical: 10, paddingHorizontal: 16, marginBottom: 8 }}
+                    onPress={() => {
+                      router.push({
+                        pathname: '/payment/checkout',
+                        params: {
+                          bookingId,
+                          amountCents: String(amountCents),
+                          isBalancePayment: 'false',
+                          preselectedMethod: opt.method,
+                        },
+                      } as any);
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14, textAlign: 'center' }}>{opt.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            );
+          }
+
+          return (
+            <View key={msg.id} style={[
+              styles.bubble,
               msg.sender === 'user'
-                ? { color: colors.primaryText }
-                : { color: colors.text },
+                ? [styles.userBubble, { backgroundColor: colors.primary }]
+                : [styles.botBubble, { backgroundColor: colors.card, borderColor: colors.border }],
             ]}>
-              {msg.text}
-            </Text>
-          </View>
-        ))}
+              <Text
+                selectable
+                style={[
+                  styles.bubbleText,
+                  msg.sender === 'user'
+                    ? { color: colors.primaryText }
+                    : { color: colors.text },
+                ]}>
+                {msg.text}
+              </Text>
+            </View>
+          );
+        })}
 
         {loading && (
           <View style={styles.typing}>

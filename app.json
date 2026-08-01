@@ -4,33 +4,77 @@
     "slug": "bellissimo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "bellissimo",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/images/logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFF8F9"
+      "backgroundColor": "#3B1C1A"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.bellissimo.hair"
+      "bundleIdentifier": "com.bellissimo.hair",
+      "buildNumber": "1",
+      "icon": "./assets/images/icon-1024-dark.png",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Bellissimo needs access to your photos to upload booking-related images.",
+        "NSPhotoLibraryAddUsageDescription": "Bellissimo needs permission to save photos to your library.",
+        "NSCameraUsageDescription": "Bellissimo needs camera access to take photos for upload.",
+        "NSMicrophoneUsageDescription": "Bellissimo needs microphone access for video uploads.",
+        "NSCalendarsUsageDescription": "Bellissimo uses your calendar to set appointment reminders.",
+        "NSLocationWhenInUseUsageDescription": "Bellissimo uses your location to show you relevant services nearby.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.bellissimo.hair",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/logo.png",
-        "backgroundColor": "#FFF8F9"
-      }
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       "expo-router",
       "expo-web-browser",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Bellissimo needs access to your photos to upload images.",
+          "cameraPermission": "Bellissimo needs camera access to take photos for upload.",
+          "microphonePermission": "Bellissimo needs microphone access for video uploads."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Bellissimo needs microphone access for video recording."
+        }
+      ]
     ],
     "extra": {
-      "backendUrl": "http://localhost:3000"
-    }
+      "backendUrl": "https://your-deployed-backend.com",
+      "router": {},
+      "eas": {
+        "projectId": "cc35e6f0-0f7a-41e0-86ad-197250fe2343"
+      }
+    },
+    "owner": "eteka"
   }
 }

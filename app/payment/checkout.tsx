@@ -7,27 +7,25 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MotiView } from 'moti';
-import { ArrowLeft, CreditCard, Smartphone, Shield, Check, Lock, Calendar, Clock } from 'lucide-react-native';
+import { ArrowLeft, Shield } from 'lucide-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { API_BASE_URL, ENDPOINTS } from '@/lib/config';
 import { useAuth } from '@/lib/auth-context';
 
-// ── Constants — replace with real values before going live ───────────────────
-const WHATSAPP_NUMBER = '+905428783359'; // admin WhatsApp
+const WHATSAPP_NUMBER = '+905428783359';
 const WHATSAPP_DISPLAY = '+90 542 878 33 59';
 const BANK_DETAILS = {
   bank: 'GTBank (Guaranty Trust Bank)',
-  accountName: 'Bellissimo Hair Studio',
-  accountNumber: '0123456789', // ← replace with real GTBank account number
+  accountName: 'Grace Michael Michael',
+  accountNumber: '0535983824',
 };
 const CRYPTO_WALLETS = [
-  { label: 'USDT (BEP-20 / Binance Smart Chain)', address: 'YOUR_BEP20_USDT_ADDRESS_HERE' },
-  { label: 'USDT (TRC-20 / TRON)', address: 'YOUR_TRC20_USDT_ADDRESS_HERE' },
-  { label: 'Bitcoin (BTC)', address: 'YOUR_BTC_ADDRESS_HERE' },
-  { label: 'Ethereum (ETH)', address: 'YOUR_ETH_ADDRESS_HERE' },
+  { label: 'USDT (BEP-20 / Binance Smart Chain)', address: '0x1167c69269080a6d042442edea4d7a83a0859351' },
+  { label: 'USDT (TRC-20 / TRON)', address: 'TW7y6kmhpygdNXfxaHZx47G3mttLCC4GyU' },
+  { label: 'Bitcoin (BTC)', address: '15Gtn9dZVjeTGwFnA4JmpjDJTwxVySj8Gm' },
+  { label: 'Ethereum (ETH)', address: '0x1167c69269080a6d042442edea4d7a83a0859351' },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 const formatDate = (dateString: string): string => {
@@ -37,11 +35,6 @@ const formatDate = (dateString: string): string => {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     });
   } catch { return dateString; }
-};
-
-const validatePhone = (phone: string): boolean => {
-  const cleaned = phone.replace(/[\s\-\(\)]/g, '');
-  return cleaned.length >= 7 && cleaned.length <= 15 && /^\+?\d+$/.test(cleaned);
 };
 
 interface UserDetails { name: string; phone: string; email: string; }
@@ -65,7 +58,8 @@ export default function CheckoutScreen() {
     isBalancePayment: string;
   }>();
 
-  const [selectedMethod, setSelectedMethod] = useState<'card' | 'transfer' | 'crypto'>('card');
+  // Card removed — only bank transfer and crypto available
+  const [selectedMethod, setSelectedMethod] = useState<'transfer' | 'crypto'>('transfer');
   const [isProcessing, setIsProcessing] = useState(false);
   const [notifyDone, setNotifyDone] = useState(false);
   const [userDetails, setUserDetails] = useState<UserDetails>({ name: '', phone: '', email: '' });
@@ -82,7 +76,6 @@ export default function CheckoutScreen() {
   const serviceId = params.serviceId || '';
   const duration = params.durationMinutes || '120';
 
-  // Auto-fill from profile
   useEffect(() => {
     if (!isAuthenticated) return;
     (async () => {
@@ -115,9 +108,8 @@ export default function CheckoutScreen() {
     ? getAuthHeaders()
     : { 'Content-Type': 'application/json', Accept: 'application/json' };
 
-  // ── Create booking (for non-balance payments) ─────────────────────────────
   const createBooking = async (): Promise<number | null> => {
-    if (isBalancePayment && bookingId) return bookingId;
+    if (bookingId) return bookingId;
     const startAt = buildStartAt();
     if (!startAt) { Alert.alert('Error', 'Invalid appointment time.'); return null; }
     const res = await fetch(`${API_BASE_URL}/bookings`, {
@@ -137,26 +129,35 @@ export default function CheckoutScreen() {
     return data.id;
   };
 
-  // ── Notify admin of manual payment ────────────────────────────────────────
   const notifyAdmin = async (method: 'bank_transfer' | 'crypto', bkId: number) => {
-    // Only send notification for balance payments — deposits never go to Payments tab
-    if (!isBalancePayment) return;
     try {
-      await fetch(`${API_BASE_URL}/payments/notify`, {
-        method: 'POST', headers: authHeaders,
-        body: JSON.stringify({
-          bookingId: bkId,
-          clientName: userDetails.name || 'Client',
-          clientPhone: userDetails.phone,
-          amountCents: amountDueNow,
-          paymentMethod: method,
-          isBalancePayment: true,
-        }),
-      });
+      if (isBalancePayment) {
+        await fetch(`${API_BASE_URL}/payments/notify`, {
+          method: 'POST', headers: authHeaders,
+          body: JSON.stringify({
+            bookingId: bkId,
+            clientName: userDetails.name || 'Client',
+            clientPhone: userDetails.phone,
+            amountCents: amountDueNow,
+            paymentMethod: method,
+            isBalancePayment: true,
+          }),
+        });
+      } else {
+        await fetch(`${API_BASE_URL}/payments/notify-deposit`, {
+          method: 'POST', headers: authHeaders,
+          body: JSON.stringify({
+            bookingId: bkId,
+            clientName: userDetails.name || 'Client',
+            clientPhone: userDetails.phone,
+            amountCents: amountDueNow,
+            paymentMethod: method,
+          }),
+        });
+      }
     } catch {}
   };
 
-  // ── Open WhatsApp ─────────────────────────────────────────────────────────
   const openWhatsApp = () => {
     const msg = encodeURIComponent(
       `Hi, I'm ${userDetails.name || 'a client'} and I've just sent ${amountLabel} of ${formatPrice(amountDueNow)} for my Bellissimo booking${bookingId ? ` #${bookingId}` : ''}. Please find proof of payment attached.`
@@ -164,62 +165,6 @@ export default function CheckoutScreen() {
     Linking.openURL(`https://wa.me/${WHATSAPP_NUMBER.replace('+', '')}?text=${msg}`);
   };
 
-  // ── Handle Stripe (card) ──────────────────────────────────────────────────
-  const handleStripePayment = async () => {
-    if (!userDetails.name.trim()) { Alert.alert('Required', 'Please enter your full name'); return; }
-    setIsProcessing(true);
-    try {
-      let bkId: number | null = null;
-
-      if (isBalancePayment) {
-        bkId = bookingId;
-      } else {
-        bkId = await createBooking();
-      }
-
-      if (!bkId) { setIsProcessing(false); return; }
-
-      const endpoint = isBalancePayment
-        ? `${API_BASE_URL}/payments/balance-session`
-        : `${API_BASE_URL}/payments/create-session`;
-
-      const res = await fetch(endpoint, {
-        method: 'POST', headers: authHeaders,
-        body: JSON.stringify({ bookingId: bkId }),
-      });
-
-      if (!res.ok) {
-        Alert.alert('Error', 'Could not create payment session. Please try again.');
-        setIsProcessing(false);
-        return;
-      }
-
-      const data = await res.json();
-      if (data.url) {
-        router.push({
-          pathname: '/payment/webview',
-          params: {
-            url: data.url,
-            bookingId: String(bkId),
-            serviceName,
-            date: params.date || '',
-            time: params.time || '',
-            clientName: userDetails.name,
-            amount: amountDueNow.toString(),
-            isBalancePayment: isBalancePayment ? 'true' : 'false',
-          },
-        } as any);
-      } else {
-        Alert.alert('Error', 'No payment URL received. Please contact support.');
-      }
-    } catch (err: any) {
-      Alert.alert('Payment Error', err.message || 'Something went wrong. Please try again.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // ── Handle manual notify (bank / crypto) ─────────────────────────────────
   const handleManualNotify = async (method: 'bank_transfer' | 'crypto') => {
     if (!userDetails.name.trim()) { Alert.alert('Required', 'Please enter your name first'); return; }
     setIsProcessing(true);
@@ -236,7 +181,6 @@ export default function CheckoutScreen() {
     }
   };
 
-  // ── Notify success screen ─────────────────────────────────────────────────
   if (notifyDone) {
     return (
       <View style={s.successContainer}>
@@ -259,7 +203,6 @@ export default function CheckoutScreen() {
     );
   }
 
-  // ── Main screen ───────────────────────────────────────────────────────────
   return (
     <ScrollView style={s.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
@@ -276,7 +219,7 @@ export default function CheckoutScreen() {
         </View>
       </View>
 
-      {/* Order summary */}
+      {/* Summary */}
       <View style={s.card}>
         <Text style={s.cardTitle}>Summary</Text>
         <View style={s.summaryRow}><Text style={s.summaryLabel}>Service</Text><Text style={s.summaryValue}>{serviceName}</Text></View>
@@ -323,11 +266,10 @@ export default function CheckoutScreen() {
         </View>
       </View>
 
-      {/* Payment method selector */}
+      {/* Payment method — card removed, Stripe disabled until bank account ready */}
       <View style={s.card}>
         <Text style={s.cardTitle}>Payment Method</Text>
         {([
-          { id: 'card', label: 'Card Payment', sub: 'Visa, Mastercard — via Stripe', icon: 'card-outline', color: '#4A6FA5', bg: '#EEF2FB' },
           { id: 'transfer', label: 'Bank Transfer', sub: 'GTBank — local Nigerian transfer', icon: 'business-outline', color: '#38A169', bg: '#EEF9F2' },
           { id: 'crypto', label: 'Crypto Transfer', sub: 'USDT, BTC, ETH — any network', icon: 'logo-bitcoin', color: '#D69E2E', bg: '#FEF9EE' },
         ] as const).map((m) => (
@@ -348,51 +290,19 @@ export default function CheckoutScreen() {
         ))}
       </View>
 
-      {/* ── CARD PAYMENT ── */}
-      {selectedMethod === 'card' && (
-        <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} style={s.card}>
-          <Text style={s.cardTitle}>Pay via Stripe</Text>
-          <Text style={s.methodNote}>
-            You'll be redirected to Stripe's secure checkout page to enter your card details and complete the payment.
-          </Text>
-          <View style={s.stripeLogos}>
-            <Ionicons name="lock-closed" size={14} color="#9D7A7D" />
-            <Text style={s.stripeNote}>256-bit SSL encryption · Powered by Stripe</Text>
-          </View>
-          <TouchableOpacity
-            style={[s.primaryBtn, { backgroundColor: '#4A6FA5' }, (!userDetails.name.trim() || isProcessing) && s.btnDisabled]}
-            onPress={handleStripePayment}
-            disabled={!userDetails.name.trim() || isProcessing}
-          >
-            {isProcessing
-              ? <ActivityIndicator color="#fff" />
-              : <>
-                  <Ionicons name="card-outline" size={18} color="#fff" />
-                  <Text style={s.primaryBtnText}>
-                    {isBalancePayment ? `Pay Balance ${formatPrice(amountDueNow)} via Stripe` : `Pay Deposit ${formatPrice(amountDueNow)} via Stripe`}
-                  </Text>
-                </>
-            }
-          </TouchableOpacity>
-        </MotiView>
-      )}
-
-      {/* ── BANK TRANSFER ── */}
+      {/* Bank Transfer */}
       {selectedMethod === 'transfer' && (
         <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} style={s.card}>
           <Text style={s.cardTitle}>GTBank Transfer Details</Text>
           <Text style={s.methodNote}>
             Transfer exactly <Text style={{ fontWeight: '800', color: '#3B1C1A' }}>{formatPrice(amountDueNow)}</Text> to the account below using your banking app.
           </Text>
-
           <View style={s.detailsBox}>
             <DetailRow label="Bank" value={BANK_DETAILS.bank} />
             <DetailRow label="Account Name" value={BANK_DETAILS.accountName} />
             <DetailRow label="Account Number" value={BANK_DETAILS.accountNumber} copyable />
             <DetailRow label="Amount" value={formatPrice(amountDueNow)} highlight />
           </View>
-
-          {/* WhatsApp proof */}
           <View style={s.whatsappBox}>
             <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
             <View style={{ flex: 1 }}>
@@ -405,8 +315,6 @@ export default function CheckoutScreen() {
             <Ionicons name="logo-whatsapp" size={18} color="#fff" />
             <Text style={s.whatsappBtnText}>Open WhatsApp to Send Proof</Text>
           </TouchableOpacity>
-
-          {/* Notify admin */}
           <View style={s.notifyDivider}>
             <View style={s.notifyDividerLine} />
             <Text style={s.notifyDividerText}>After sending proof on WhatsApp</Text>
@@ -435,14 +343,13 @@ export default function CheckoutScreen() {
         </MotiView>
       )}
 
-      {/* ── CRYPTO ── */}
+      {/* Crypto */}
       {selectedMethod === 'crypto' && (
         <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} style={s.card}>
           <Text style={s.cardTitle}>Crypto Wallet Addresses</Text>
           <Text style={s.methodNote}>
             Send exactly <Text style={{ fontWeight: '800', color: '#3B1C1A' }}>{formatPrice(amountDueNow)}</Text> worth of crypto to any of the addresses below.
           </Text>
-
           <View style={s.detailsBox}>
             {CRYPTO_WALLETS.map((w) => (
               <View key={w.label} style={s.cryptoRow}>
@@ -451,8 +358,6 @@ export default function CheckoutScreen() {
               </View>
             ))}
           </View>
-
-          {/* WhatsApp proof */}
           <View style={s.whatsappBox}>
             <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
             <View style={{ flex: 1 }}>
@@ -465,8 +370,6 @@ export default function CheckoutScreen() {
             <Ionicons name="logo-whatsapp" size={18} color="#fff" />
             <Text style={s.whatsappBtnText}>Open WhatsApp to Send Proof</Text>
           </TouchableOpacity>
-
-          {/* Notify admin */}
           <View style={s.notifyDivider}>
             <View style={s.notifyDividerLine} />
             <Text style={s.notifyDividerText}>After sending proof on WhatsApp</Text>
@@ -500,7 +403,6 @@ export default function CheckoutScreen() {
   );
 }
 
-// ── Detail row helper ─────────────────────────────────────────────────────────
 function DetailRow({ label, value, copyable, highlight }: { label: string; value: string; copyable?: boolean; highlight?: boolean }) {
   return (
     <View style={dr.row}>
@@ -517,7 +419,6 @@ const dr = StyleSheet.create({
   highlight: { color: '#9D7A7D', fontSize: 18 },
 });
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAF5F6' },
   successContainer: { flex: 1, backgroundColor: '#FAF5F6', justifyContent: 'center', alignItems: 'center', padding: 32 },
@@ -556,8 +457,6 @@ const s = StyleSheet.create({
   radioInner: { width: 10, height: 10, borderRadius: 5 },
   methodNote: { fontSize: 14, color: '#7C6665', lineHeight: 22, marginBottom: 16 },
   detailsBox: { backgroundColor: '#FAF5F6', borderRadius: 14, padding: 14, marginBottom: 16 },
-  stripeLogos: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 20, justifyContent: 'center' },
-  stripeNote: { fontSize: 12, color: '#9D7A7D' },
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 25, paddingVertical: 16 },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   btnDisabled: { opacity: 0.45 },
@@ -576,4 +475,6 @@ const s = StyleSheet.create({
   cryptoRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F0E6E8' },
   cryptoLabel: { fontSize: 12, color: '#9D7A7D', fontWeight: '600', marginBottom: 4 },
   cryptoAddress: { fontSize: 13, fontWeight: '700', color: '#3B1C1A', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+  stripeLogos: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 20, justifyContent: 'center' },
+  stripeNote: { fontSize: 12, color: '#9D7A7D' },
 });

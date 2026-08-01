@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { MotiView } from 'moti';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Video, ResizeMode } from 'expo-av';
@@ -20,7 +20,8 @@ import { useAuth } from '@/lib/auth-context';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const IS_TABLET = SCREEN_WIDTH >= 768;
 const IS_MOBILE = SCREEN_WIDTH < 768;
-const CARD_WIDTH = 260;
+// Responsive card width — takes 75% of screen width, capped at 300px
+const CARD_WIDTH = Math.min(Math.round(SCREEN_WIDTH * 0.75), 300);
 const CARD_SPACING = 20;
 const CARD_FULL_WIDTH = CARD_WIDTH + CARD_SPACING;
 
@@ -46,11 +47,47 @@ const ALL_SERVICES = [
   { name: 'Full Care (Wash + Treatment)', category: 'Wash & Care', route: '/services/wash' },
 ];
 
-const SERVICES = [
-  { id: 'installation', title: 'Wig Installation', subtitle: 'Frontals, closures, ponytails', description: 'Professional wig installation with natural-looking results', price: 'From $250', image: require('../../assets/images/installation.jpg'), route: '/services/installation', color: '#B89FA1' },
-  { id: 'braids', title: 'Braids & Cornrows', subtitle: 'Knotless, boho, cornrows', description: 'Trendy braiding styles with premium extensions', price: 'From $300', image: require('../../assets/images/braids.jpg'), route: '/services/braids', color: '#C9A8A5' },
-  { id: 'wash', title: 'Wash & Care', subtitle: 'Wash, condition, treat', description: 'Complete hair care treatment and styling', price: 'From $50', image: require('../../assets/images/washingHair.jpg'), route: '/services/wash', color: '#D6BFC1' },
-];
+// Local fallback images — used when no custom image uploaded to S3
+const LOCAL_IMAGES: Record<string, any> = {
+  installation: require('../../assets/images/installation.jpg'),
+  braids:       require('../../assets/images/braids.jpg'),
+  wash:         require('../../assets/images/washingHair.jpg'),
+};
+const PLACEHOLDER_IMAGE = require('../../assets/images/logo.png');
+
+// Accent colours cycle for new services
+const SERVICE_COLORS = ['#B89FA1', '#C9A8A5', '#D6BFC1', '#9D7A7D', '#7C5E60'];
+
+// Maps a backend service to a card-renderable shape
+function mapBackendService(s: any, index: number) {
+  const nameLower = s.name?.toLowerCase() ?? '';
+  const localKey = nameLower.includes('install') || nameLower.includes('wig')
+    ? 'installation'
+    : nameLower.includes('braid') || nameLower.includes('corn')
+    ? 'braids'
+    : nameLower.includes('wash') || nameLower.includes('care')
+    ? 'wash'
+    : null;
+
+  return {
+    id: s.id,
+    title: s.name,
+    subtitle: s.description?.split('.')[0] ?? s.name,
+    description: '', // avoid showing description twice (subtitle already shows it)
+    price: `From $${((s.priceCents ?? 0) / 100).toFixed(0)}`,
+    priceCents: s.priceCents ?? 0,
+    durationMinutes: s.durationMinutes ?? 60,
+    tag: s.tag ?? '',
+    // If admin uploaded an S3 image use it, else use matching local image or placeholder
+    image: s.imageUrl
+      ? { uri: s.imageUrl }
+      : localKey
+      ? LOCAL_IMAGES[localKey]
+      : PLACEHOLDER_IMAGE,
+    route: localKey ? `/services/${localKey}` : '/services',
+    color: SERVICE_COLORS[index % SERVICE_COLORS.length],
+  };
+}
 
 const TESTIMONIALS = [
   { id: 1, name: 'Chiamaka', text: "Best wig installation I've ever had! The quality is exceptional. I walked out feeling like a completely different person — every detail was perfect.", rating: 5, date: '2 days ago', likes: 12 },
@@ -77,7 +114,7 @@ function VideoPlayer({ uri }: { uri: string }) {
 
 const FOLDER_LABELS: Record<string, string> = {
   premium_quality:  'Premium Quality',
-  quick_service:    'Quick Service',
+  before_after:     'Before & After',
   expert_stylists:  'Expert Stylists',
   hygiene_first:    'Hygiene First',
 };
@@ -96,14 +133,24 @@ function GalleryModal({ visible, folder, onClose }: { visible: boolean; folder: 
       setLoading(true);
       setItems([]);
       const res = await fetch(`${API_BASE_URL}/gallery/folder/${f}`);
-      if (res.ok) { const data = await res.json(); setItems(Array.isArray(data) ? data : (data.items ?? [])); }
+      if (res.ok) {
+        const data = await res.json();
+        setItems(Array.isArray(data) ? data : (data.items ?? []));
+      } else {
+        // Fallback — try general gallery endpoint with folder filter
+        const res2 = await fetch(`${API_BASE_URL}/gallery?folder=${f}&limit=50`);
+        if (res2.ok) {
+          const data2 = await res2.json();
+          setItems(Array.isArray(data2) ? data2 : (data2.items ?? []));
+        }
+      }
     } catch { setItems([]); } finally { setLoading(false); }
   };
 
   const imgSize = (SCREEN_WIDTH - 48) / 2;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={modal.container}>
         <View style={modal.header}>
           <Text style={modal.title}>{FOLDER_LABELS[folder] ?? 'Our Work'}</Text>
@@ -155,7 +202,16 @@ function GalleryModal({ visible, folder, onClose }: { visible: boolean; folder: 
                       : <Image source={{ uri: selected?.url }} style={{ width: SCREEN_WIDTH, height: SCREEN_WIDTH * 1.1 }} resizeMode="contain" />
                     }
                     {selected?.caption && (
-                      <Text style={{ color: '#fff', fontSize: 14, marginTop: 16, paddingHorizontal: 24, textAlign: 'center' }}>{selected.caption}</Text>
+                      <Text style={{
+                        color: '#fff',
+                        fontSize: selected?.folder === 'expert_stylists' ? 18 : 14,
+                        fontWeight: selected?.folder === 'expert_stylists' ? '700' : '400',
+                        marginTop: 16,
+                        paddingHorizontal: 24,
+                        textAlign: 'center',
+                      }}>
+                        {selected?.folder === 'expert_stylists' ? `👤 ${selected.caption}` : selected.caption}
+                      </Text>
                     )}
                   </View>
                 </Modal>
@@ -214,7 +270,7 @@ function ReviewsModal({ visible, onClose, liveReviews }: { visible: boolean; onC
     ));
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={modal.container}>
         <View style={modal.header}>
           <Text style={modal.title}>Client Stories</Text>
@@ -270,6 +326,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { isAuthenticated, getAuthHeaders } = useAuth();
   const [isOwing, setIsOwing] = useState(false);
+  const [liveServices, setLiveServices] = useState<ReturnType<typeof mapBackendService>[]>([]);
   const [liveReviews, setLiveReviews] = useState<any[]>([]);
   const scrollRef = useRef<ScrollView | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -286,6 +343,10 @@ export default function HomeScreen() {
   const [galleryModalVisible, setGalleryModalVisible] = useState(false);
   const [galleryFolder, setGalleryFolder] = useState('premium_quality');
   const [comingSoonVisible, setComingSoonVisible] = useState(false);
+  const [aboutVisible, setAboutVisible] = useState(false);
+
+  const WHATSAPP = '+905428783359';
+  const openWhatsApp = () => Linking.openURL(`https://wa.me/${WHATSAPP}`);
   const [reviewsModalVisible, setReviewsModalVisible] = useState(false);
 
   const searchInputRef = useRef<TextInput>(null);
@@ -353,10 +414,40 @@ export default function HomeScreen() {
       } catch {}
     };
 
+    const fetchServices = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/services`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length > 0) {
+            setLiveServices(data.map(mapBackendService));
+          }
+        }
+      } catch {}
+    };
+
     fetchStats();
     fetchOwingStatus();
     fetchReviews();
+    fetchServices();
   }, [isAuthenticated]);
+
+  // Re-check owing status every time home screen is focused
+  // This catches admin marking owing while client is in the app
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isAuthenticated) return;
+      fetch(`${API_BASE_URL}/bookings/my-bookings`, { headers: getAuthHeaders() })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) {
+            const bookings = data.bookings ?? data ?? [];
+            setIsOwing(bookings.some((b: any) => b.paymentStatus === 'owing'));
+          }
+        })
+        .catch(() => {});
+    }, [isAuthenticated])
+  );
 
   const toggleLike = (id: number) => {
     setLikes((prev) => ({ ...prev, [id]: { count: prev[id].liked ? prev[id].count - 1 : prev[id].count + 1, liked: !prev[id].liked } }));
@@ -366,7 +457,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const nextIndex = (currentIndex + 1) % SERVICES.length;
+      const nextIndex = (currentIndex + 1) % (liveServices.length || 1);
       setCurrentIndex(nextIndex);
       scrollRef.current?.scrollTo({ x: nextIndex * CARD_FULL_WIDTH, animated: true });
     }, 4000);
@@ -386,7 +477,7 @@ export default function HomeScreen() {
 
   const handleFeaturePress = (label: string) => {
     switch (label) {
-      case 'Quick Service':   setGalleryFolder('quick_service');   setGalleryModalVisible(true); break;
+      case 'Before & After':   setGalleryFolder('before_after');    setGalleryModalVisible(true); break;
       case 'Premium Quality': setGalleryFolder('premium_quality'); setGalleryModalVisible(true); break;
       case 'Expert Stylists': setGalleryFolder('expert_stylists'); setGalleryModalVisible(true); break;
       case 'Hygiene First':   setGalleryFolder('hygiene_first');   setGalleryModalVisible(true); break;
@@ -395,7 +486,7 @@ export default function HomeScreen() {
 
   const FEATURES = [
     { icon: 'emoji-events' as const,        label: 'Premium Quality', color: '#C9A8A5' },
-    { icon: 'schedule' as const,            label: 'Quick Service',   color: '#B89FA1' },
+    { icon: 'schedule' as const,            label: 'Before & After',   color: '#B89FA1' },
     { icon: 'people' as const,              label: 'Expert Stylists', color: '#9D7A7D' },
     { icon: 'health-and-safety' as const,   label: 'Hygiene First',   color: '#7C5E60' },
   ];
@@ -478,7 +569,11 @@ export default function HomeScreen() {
             <BlurView intensity={30} tint="dark" style={styles.navBar}>
               <View style={styles.navLinks}>
                 {['About', 'Services', 'Bookings', 'Contact'].map((item) => (
-                  <TouchableOpacity key={item} onPress={() => router.push(`/${item.toLowerCase()}` as any)} style={styles.navLink}>
+                  <TouchableOpacity key={item} onPress={() => {
+                    if (item === 'About') { setAboutVisible(true); return; }
+                    if (item === 'Contact') { openWhatsApp(); return; }
+                    router.push(`/${item.toLowerCase()}` as any);
+                  }} style={styles.navLink}>
                     <Text style={styles.navLinkText}>{item}</Text>
                   </TouchableOpacity>
                 ))}
@@ -525,7 +620,7 @@ export default function HomeScreen() {
                   <Text style={styles.featureLabel}>{feature.label}</Text>
                   <Text style={styles.featureHint}>
                     {feature.label === 'Premium Quality' && 'View our work →'}
-                    {feature.label === 'Quick Service'   && 'View our work →'}
+                    {feature.label === 'Before & After'   && 'View our work →'}
                     {feature.label === 'Expert Stylists' && 'View our work →'}
                     {feature.label === 'Hygiene First'   && 'View our work →'}
                   </Text>
@@ -543,7 +638,7 @@ export default function HomeScreen() {
           <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}
             snapToInterval={CARD_FULL_WIDTH} decelerationRate={0.85}
             onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={styles.carouselContent}>
-            {SERVICES.map((service, index) => {
+            {liveServices.map((service, index) => {
               const isActive = index === currentIndex;
               return (
                 <TouchableOpacity key={service.id} onPress={() => {
@@ -559,12 +654,13 @@ export default function HomeScreen() {
                     <Image source={service.image} style={styles.cardImage} />
                     <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={styles.cardOverlay} />
                     <View style={styles.cardContent}>
-                      <View style={styles.cardHeader}>
-                        <Text style={styles.cardTitle}>{service.title}</Text>
-                        <Text style={styles.cardPrice}>{service.price}</Text>
+                      <View>
+                        <View style={styles.cardHeader}>
+                          <Text style={styles.cardTitle} numberOfLines={2}>{service.title}</Text>
+                          <Text style={styles.cardPrice}>{service.price}</Text>
+                        </View>
+                        <Text style={styles.cardSubtitle} numberOfLines={3}>{service.subtitle}</Text>
                       </View>
-                      <Text style={styles.cardSubtitle}>{service.subtitle}</Text>
-                      <Text style={styles.cardDescription}>{service.description}</Text>
                       <TouchableOpacity style={[styles.bookServiceBtn, { backgroundColor: service.color }]}
                         onPress={() => {
                           if (isOwing) {
@@ -583,7 +679,7 @@ export default function HomeScreen() {
             })}
           </ScrollView>
           <View style={styles.indicators}>
-            {SERVICES.map((_, index) => (
+            {liveServices.map((_, index) => (
               <View key={index} style={[styles.indicator, index === currentIndex && styles.indicatorActive]} />
             ))}
           </View>
@@ -674,7 +770,7 @@ export default function HomeScreen() {
                 <Text style={styles.primaryCtaText}>Book Appointment</Text>
                 <MaterialIcons name="calendar-today" size={20} color="#FFF" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryCta} onPress={() => router.push('/contact' as any)}>
+              <TouchableOpacity style={styles.secondaryCta} onPress={openWhatsApp}>
                 <Text style={styles.secondaryCtaText}>Contact Us</Text>
                 <MaterialIcons name="chat" size={20} color="#FFF" />
               </TouchableOpacity>
@@ -691,17 +787,17 @@ export default function HomeScreen() {
           <View style={styles.footerLinks}>
             <TouchableOpacity onPress={() => router.push('/terms' as any)}><Text style={styles.footerLink}>Terms</Text></TouchableOpacity>
             <Text style={styles.footerDot}>·</Text>
-            <TouchableOpacity onPress={() => Linking.openURL('https://www.privacypolicygenerator.info/')}><Text style={styles.footerLink}>Privacy</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => Linking.openURL('https://www.termsfeed.com/live/a0405335-52a1-404c-a92e-4a3a448dc3df')}><Text style={styles.footerLink}>Privacy Policy</Text></TouchableOpacity>
             <Text style={styles.footerDot}>·</Text>
             <TouchableOpacity onPress={() => router.push('/profile' as any)}><Text style={styles.footerLink}>Security</Text></TouchableOpacity>
-            <Text style={styles.footerDot}>·</Text>
-            <TouchableOpacity><Text style={styles.footerLink}>Status</Text></TouchableOpacity>
-            <Text style={styles.footerDot}>·</Text>
-            <TouchableOpacity><Text style={styles.footerLink}>Community</Text></TouchableOpacity>
+            {/* <Text style={styles.footerDot}>·</Text>
+            <TouchableOpacity><Text style={styles.footerLink}>Status</Text></TouchableOpacity> */}
+            {/* <Text style={styles.footerDot}>·</Text>
+            <TouchableOpacity><Text style={styles.footerLink}>Community</Text></TouchableOpacity> */}
           </View>
           <View style={styles.footerLinks2}>
-            <TouchableOpacity><Text style={styles.footerLink}>Manage cookies</Text></TouchableOpacity>
-            <Text style={styles.footerDot}>·</Text>
+            {/* <TouchableOpacity><Text style={styles.footerLink}>Manage cookies</Text></TouchableOpacity> */}
+            {/* <Text style={styles.footerDot}>·</Text> */}
             <TouchableOpacity><Text style={styles.footerLink}>Do not share my personal information</Text></TouchableOpacity>
           </View>
         </View>
@@ -709,6 +805,29 @@ export default function HomeScreen() {
         {/* Modals */}
         <GalleryModal visible={galleryModalVisible} folder={galleryFolder} onClose={() => setGalleryModalVisible(false)} />
         <ComingSoonModal visible={comingSoonVisible} onClose={() => setComingSoonVisible(false)} />
+
+        {/* About Us Modal */}
+        <Modal visible={aboutVisible} transparent animationType="fade" onRequestClose={() => setAboutVisible(false)}>
+          <Pressable style={modal.overlay} onPress={() => setAboutVisible(false)}>
+            <Pressable style={modal.card}>
+              <View style={modal.comingSoonIcon}>
+                <Text style={{ fontSize: 48 }}>💇‍♀️</Text>
+              </View>
+              <Text style={modal.comingSoonTitle}>About Bellissimo</Text>
+              <Text style={[modal.comingSoonText, { textAlign: 'center', lineHeight: 22 }]}>
+                Bellissimo Hair Studio is a premium hair salon dedicated to bringing out your best look. We specialise in wig installation, braiding, and complete hair care treatments — combining artistry with professionalism.{'\n\n'}
+                Every client receives personalised attention in a warm, welcoming environment. Our stylists are trained to listen, advise, and deliver results that exceed expectations.{'\n\n'}
+                📍 Visit us or book online — we can't wait to serve you.
+              </Text>
+              <TouchableOpacity style={[modal.comingSoonBtn, { marginBottom: 10 }]} onPress={openWhatsApp}>
+                <Text style={modal.comingSoonBtnText}>Chat on WhatsApp</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setAboutVisible(false)}>
+                <Text style={{ color: '#B89FA1', fontSize: 14, textAlign: 'center' }}>Close</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
         <ReviewsModal visible={reviewsModalVisible} onClose={() => setReviewsModalVisible(false)} liveReviews={liveReviews} />
         <MobileMenu visible={menuOpen} onClose={() => setMenuOpen(false)} />
 
@@ -728,6 +847,7 @@ const modal = StyleSheet.create({
   grid: { padding: 16, gap: 8 },
   gridImage: { borderRadius: 12 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 32 },
+  card: { width: '100%', maxWidth: 340, backgroundColor: '#FFF', borderRadius: 28, padding: 28, alignItems: 'center' },
   sheet: { backgroundColor: '#fff', borderRadius: 28, padding: 32, alignItems: 'center', width: '100%', maxWidth: 340 },
   comingSoonIcon: { width: 88, height: 88, borderRadius: 44, backgroundColor: '#FFF0F6', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   comingSoonTitle: { fontSize: 24, fontWeight: '800', color: '#3B1C1A', marginBottom: 4, textAlign: 'center' },
@@ -795,8 +915,8 @@ const styles = StyleSheet.create({
   featureHint: { fontSize: 12, color: '#B04A75', textAlign: 'center', fontWeight: '500' },
   servicesSection: { paddingVertical: 50, backgroundColor: '#FAF5F6', paddingHorizontal: 24 },
   carouselContent: { paddingBottom: 40 },
-  serviceCard: { width: CARD_WIDTH, height: 420, backgroundColor: '#FFF', borderRadius: 24, marginRight: CARD_SPACING, overflow: 'hidden', borderWidth: 2, elevation: 8, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20, shadowOffset: { width: 0, height: 10 } },
-  cardImage: { width: '100%', height: 180 },
+  serviceCard: { width: CARD_WIDTH, minHeight: 420, backgroundColor: '#FFF', borderRadius: 24, marginRight: CARD_SPACING, overflow: 'hidden', borderWidth: 2, elevation: 8, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20, shadowOffset: { width: 0, height: 10 } },
+  cardImage: { width: '100%', height: 160 },
   cardOverlay: { position: 'absolute', top: 0, left: 0, right: 0, height: 180 },
   cardContent: { padding: 20, flex: 1, justifyContent: 'space-between' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },

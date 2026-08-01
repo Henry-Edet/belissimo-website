@@ -1,11 +1,11 @@
 // app/(tabs)/bookings.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Calendar, Clock, X } from 'lucide-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ENDPOINTS, API_BASE_URL } from '@/lib/config';
@@ -16,7 +16,7 @@ import ReviewModal from '@/components/ReviewModal';
 interface Booking {
   id: number;
   serviceId: string;
-  service?: { name: string };
+  service?: { name: string; priceCents?: number };
   subServiceName?: string;
   startAt: string;
   endAt: string;
@@ -36,11 +36,15 @@ interface Review {
 
 const formatBooking = (b: Booking) => {
   const start = new Date(b.startAt);
+  const priceCents = b.service?.priceCents ?? 0;
+  const depositCents = Math.round(priceCents * 0.3);
   return {
     ...b,
     serviceName: b.subServiceName || b.service?.name || 'Appointment',
     date: start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
     time: start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    depositCents,
+    priceCents,
   };
 };
 
@@ -65,10 +69,13 @@ export default function BookingsScreen() {
 
   const isOwing = bookings.some(b => b.paymentStatus === 'owing');
 
-  useEffect(() => {
-    if (isAuthenticated) fetchBookings();
-    else setLoading(false);
-  }, [isAuthenticated]);
+  // Refresh every time screen is focused — catches Bella-created bookings and balance updates
+  useFocusEffect(
+    useCallback(() => {
+      if (isAuthenticated) fetchBookings();
+      else setLoading(false);
+    }, [isAuthenticated])
+  );
 
   const fetchBookings = async () => {
     try {
@@ -267,33 +274,70 @@ export default function BookingsScreen() {
                   </TouchableOpacity>
                 ) : null}
 
-                {/* Cancel button */}
-                {booking.status === 'pending' && (
-                  <TouchableOpacity style={styles.cancelButton} onPress={() => cancelBooking(booking.id)}>
-                    <X size={15} color="#E53E3E" />
-                    <Text style={styles.cancelButtonText}>Cancel Booking</Text>
-                  </TouchableOpacity>
+                {/* Action buttons row */}
+                {booking.status !== 'cancelled' && booking.status !== 'completed' && booking.paymentStatus !== 'completed' && (
+                  <View style={styles.actionRow}>
+                    {/* Cancel — only for pending */}
+                    {booking.status === 'pending' && (
+                      <TouchableOpacity
+                        style={styles.cancelButton}
+                        onPress={() => cancelBooking(booking.id)}
+                      >
+                        <X size={15} color="#E53E3E" />
+                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Pay Deposit — paymentStatus is 'none' (not yet paid) */}
+                    {(!booking.paymentStatus || booking.paymentStatus === 'none') && booking.depositCents > 0 && (
+                      <TouchableOpacity
+                        style={styles.payDepositButton}
+                        onPress={() => router.push({
+                          pathname: '/payment/checkout',
+                          params: {
+                            bookingId: String(booking.id),
+                            serviceName: booking.serviceName,
+                            price: String(booking.priceCents),
+                            isBalancePayment: 'false',
+                          },
+                        } as any)}
+                      >
+                        <Ionicons name="card-outline" size={15} color="#fff" />
+                        <Text style={styles.payDepositText}>
+                          Pay Deposit ${(booking.depositCents / 100).toFixed(2)}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Pay Balance — paymentStatus is 'owing' */}
+                    {booking.paymentStatus === 'owing' && (
+                      <TouchableOpacity
+                        style={styles.payBalanceButton}
+                        onPress={() => router.push({
+                          pathname: '/payment/checkout',
+                          params: {
+                            bookingId: String(booking.id),
+                            amountCents: String(booking.balanceCents ?? 0),
+                            serviceName: booking.serviceName,
+                            isBalancePayment: 'true',
+                          },
+                        } as any)}
+                      >
+                        <Ionicons name="alert-circle-outline" size={15} color="#fff" />
+                        <Text style={styles.payBalanceText}>
+                          Pay Balance ${((booking.balanceCents ?? 0) / 100).toFixed(2)}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 )}
 
-                {/* Pay balance — goes to checkout with all payment options */}
-                {booking.paymentStatus === 'owing' && (
-                  <TouchableOpacity
-                    style={styles.payBalanceButton}
-                    onPress={() => router.push({
-                      pathname: '/payment/checkout',
-                      params: {
-                        bookingId: String(booking.id),
-                        amountCents: String(booking.balanceCents ?? 0),
-                        serviceName: booking.serviceName,
-                        isBalancePayment: 'true',
-                      },
-                    } as any)}
-                  >
-                    <Ionicons name="card-outline" size={15} color="#fff" />
-                    <Text style={styles.payBalanceText}>
-                      Pay Balance ${((booking.balanceCents ?? 0) / 100).toFixed(2)}
-                    </Text>
-                  </TouchableOpacity>
+                {/* Deposit paid — waiting for service */}
+                {booking.paymentStatus === 'deposit_paid' && (
+                  <View style={styles.depositPaidBanner}>
+                    <Ionicons name="checkmark-circle" size={16} color="#38A169" />
+                    <Text style={styles.depositPaidText}>Deposit paid — see you at your appointment! 💛</Text>
+                  </View>
                 )}
               </View>
             );
@@ -353,10 +397,15 @@ const styles = StyleSheet.create({
   bookingDetails: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 },
   detailItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   detailText: { fontSize: 13 },
-  cancelButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#FED7D7', backgroundColor: '#FFF5F5' },
-  cancelButtonText: { color: '#E53E3E', fontWeight: '600', fontSize: 14 },
-  payBalanceButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#E53E3E', borderRadius: 12, paddingVertical: 13, marginTop: 12 },
-  payBalanceText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' },
+  cancelButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#FED7D7', backgroundColor: '#FFF5F5', minWidth: 90 },
+  cancelButtonText: { color: '#E53E3E', fontWeight: '600', fontSize: 13 },
+  payDepositButton: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#38A169', borderRadius: 12, paddingVertical: 11 },
+  payDepositText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  payBalanceButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#E53E3E', borderRadius: 12, paddingVertical: 11 },
+  payBalanceText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  depositPaidBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F0FFF4', borderRadius: 10, padding: 10, marginTop: 10, borderWidth: 1, borderColor: '#9AE6B4' },
+  depositPaidText: { color: '#38A169', fontWeight: '600', fontSize: 12, flex: 1 },
   // Review section on card
   reviewSection: { borderRadius: 12, padding: 12, marginTop: 12, borderWidth: 1 },
   reviewStars: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },

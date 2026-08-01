@@ -4,11 +4,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   ActivityIndicator, Alert, RefreshControl, Platform,
-  Modal, Pressable, TextInput, KeyboardAvoidingView, Image,
+  Modal, Pressable, TextInput, KeyboardAvoidingView, Image, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth-context';
 import { API_BASE_URL } from '@/lib/config';
+import { useNotificationSound } from '@/lib/use-notification-sound';
 
 // Shared takeover set — mirrors backend in-memory store for UI state
 const takenOverSessions = new Set<string>();
@@ -83,14 +84,24 @@ function BookingRow({ b, onConfirm, onCancel, onOwing, onMarkPaid }: {
           </TouchableOpacity>
         </View>
       )}
-      {(b.status === 'confirmed' || b.status === 'completed') && b.paymentStatus !== 'completed' && (
+      {(b.status === 'confirmed' || b.status === 'completed' || (b.status === 'pending' && b.paymentStatus === 'deposit_paid')) && b.paymentStatus !== 'completed' && (
         <View style={s.rowActions}>
           <TouchableOpacity style={s.owingBtn} onPress={() => onOwing(b.id)}>
             <Ionicons name="alert-circle-outline" size={14} color="#D69E2E" /><Text style={s.owingText}>Mark Owing</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.paidBtn} onPress={() => onMarkPaid(b.id)}>
-            <Ionicons name="checkmark-circle-outline" size={14} color="#38A169" /><Text style={s.paidText}>Payment Complete</Text>
-          </TouchableOpacity>
+          {b.paymentStatus === 'owing'
+            ? (
+              // Client must pay and notify before admin can confirm — check Payments tab
+              <View style={[s.paidBtn, { opacity: 0.5 }]}>
+                <Ionicons name="time-outline" size={14} color="#9D7A7D" />
+                <Text style={[s.paidText, { color: '#9D7A7D' }]}>Awaiting Payment</Text>
+              </View>
+            ) : (
+              <TouchableOpacity style={s.paidBtn} onPress={() => onMarkPaid(b.id)}>
+                <Ionicons name="checkmark-circle-outline" size={14} color="#38A169" /><Text style={s.paidText}>Payment Complete</Text>
+              </TouchableOpacity>
+            )
+          }
         </View>
       )}
       {b.paymentStatus === 'completed' && (
@@ -105,18 +116,30 @@ function BookingRow({ b, onConfirm, onCancel, onOwing, onMarkPaid }: {
 
 // The 4 branded upload sections
 const UPLOAD_FOLDERS = [
-  { key: 'premium_quality', label: 'Premium Quality', icon: 'diamond-outline' as const, color: '#9D7A7D' },
-  { key: 'expert_stylists', label: 'Expert Stylists', icon: 'ribbon-outline' as const,  color: '#38A169' },
-  { key: 'hygiene_first',   label: 'Hygiene First',   icon: 'shield-checkmark-outline' as const, color: '#4A6FA5' },
+  { key: 'premium_quality', label: 'Premium Quality',  icon: 'diamond-outline' as const,           color: '#9D7A7D' },
+  { key: 'before_after',    label: 'Before & After',   icon: 'color-wand-outline' as const,        color: '#B04A75' },
+  { key: 'expert_stylists', label: 'Expert Stylists',  icon: 'ribbon-outline' as const,            color: '#38A169' },
+  { key: 'hygiene_first',   label: 'Hygiene First',    icon: 'shield-checkmark-outline' as const,  color: '#4A6FA5' },
 ];
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdminScreen() {
   const { user, getAuthHeaders, isAuthenticated } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const { playSound } = useNotificationSound();
   const scrollRef = useRef<ScrollView>(null);
 
-  const [tab, setTab] = useState<'dashboard' | 'bookings' | 'payments' | 'chat' | 'gallery'>('dashboard');
+  // Toast notification state
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  };
+
+  const [tab, setTab] = useState<'dashboard' | 'bookings' | 'payments' | 'chat' | 'gallery' | 'services'>('dashboard');
   const [stats, setStats] = useState<Stats | null>(null);
   const [paymentNotifications, setPaymentNotifications] = useState<any[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
@@ -132,6 +155,8 @@ export default function AdminScreen() {
   const [sendingAdmin, setSendingAdmin] = useState(false);
   const [takenOver, setTakenOver] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
+  const [refreshingSession, setRefreshingSession] = useState(false);
+  const sessionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [owingModalVisible, setOwingModalVisible] = useState(false);
   const [owingBookingId, setOwingBookingId] = useState<number | null>(null);
   const [owingAmount, setOwingAmount] = useState('');
@@ -142,6 +167,20 @@ export default function AdminScreen() {
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedUploadFolder, setSelectedUploadFolder] = useState<string>('premium_quality');
+  const [selectedGalleryItem, setSelectedGalleryItem] = useState<any | null>(null);
+  const [uploadCaption, setUploadCaption] = useState<string>('');
+
+  // Services management state
+  const [adminServices, setAdminServices] = useState<any[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [serviceModal, setServiceModal] = useState<{ visible: boolean; service: any | null }>({ visible: false, service: null });
+  const [svcName, setSvcName] = useState('');
+  const [svcPrice, setSvcPrice] = useState('');
+  const [svcDuration, setSvcDuration] = useState('');
+  const [svcDescription, setSvcDescription] = useState('');
+  const [svcTag, setSvcTag] = useState('');
+  const [svcImage, setSvcImage] = useState<{ uri: string; name: string; type: string } | null>(null);
+  const [svcSubmitting, setSvcSubmitting] = useState(false);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchStats = async () => {
@@ -169,13 +208,20 @@ export default function AdminScreen() {
   };
 
   const fetchSession = async (sessionId: string) => {
+    setRefreshingSession(true);
     try {
       const res = await fetch(`${API_BASE_URL}/admin/chat/sessions/${sessionId}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
-        setSessionMessages(Array.isArray(data) ? data : (data.messages ?? []));
+        const msgs = Array.isArray(data) ? data : (data.messages ?? []);
+        // Sort ascending by createdAt so newest messages appear at bottom
+        const sorted = [...msgs].sort((a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+        setSessionMessages(sorted);
       }
     } catch {}
+    finally { setRefreshingSession(false); }
   };
 
   const fetchNotifications = async () => {
@@ -236,6 +282,7 @@ export default function AdminScreen() {
 
       formData.append('folder', selectedUploadFolder);
       formData.append('isPublic', 'true');
+      if (uploadCaption.trim()) formData.append('caption', uploadCaption.trim());
 
       const allHeaders = getAuthHeaders();
       const authToken = allHeaders['Authorization'];
@@ -254,13 +301,15 @@ export default function AdminScreen() {
 
       if (res.ok) {
         Alert.alert('✅ Uploaded', `Added to "${UPLOAD_FOLDERS.find(f => f.key === selectedUploadFolder)?.label}" successfully.`);
+        setUploadCaption('');
         fetchGallery();
       } else {
         const err = await res.json().catch(() => ({}));
-        Alert.alert('Upload Failed', err.message ?? `Error ${res.status}. Please try again.`);
+        const errMsg = Array.isArray(err.message) ? err.message.join(', ') : (err.message ?? `Error ${res.status}. Please try again.`);
+        Alert.alert('Upload Failed', errMsg);
       }
     } catch (err: any) {
-      Alert.alert('Error', err.message ?? 'Upload failed.');
+      Alert.alert('Error', Array.isArray(err.message) ? err.message.join(', ') : (err.message ?? 'Upload failed.'));
     } finally {
       setUploading(false);
     }
@@ -281,7 +330,158 @@ export default function AdminScreen() {
     setLoading(false);
   };
 
+  const fetchAdminServices = async () => {
+    setServicesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/services`);
+      if (res.ok) setAdminServices(await res.json());
+    } catch {} finally { setServicesLoading(false); }
+  };
+
+  const openServiceModal = (service: any | null) => {
+    setServiceModal({ visible: true, service });
+    setSvcName(service?.name ?? '');
+    setSvcPrice(service ? String(Math.round(service.priceCents / 100)) : '');
+    setSvcDuration(service?.durationMinutes ? String(service.durationMinutes) : '');
+    setSvcDescription(service?.description ?? '');
+    setSvcTag(service?.tag ?? '');
+    setSvcImage(null);
+  };
+
+  const pickServiceImage = async () => {
+    try {
+      const { launchImageLibraryAsync, requestMediaLibraryPermissionsAsync } =
+        await import('expo-image-picker');
+      const { status } = await requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Allow photo access in Settings.');
+        return;
+      }
+      const result = await launchImageLibraryAsync({ mediaTypes: 'Images' as any, quality: 0.85 });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        const name = asset.fileName ?? asset.uri.split('/').pop() ?? 'photo.jpg';
+        setSvcImage({ uri: asset.uri, name, type: 'image/jpeg' });
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
+  };
+
+  const submitService = async () => {
+    if (!svcName.trim() || !svcPrice.trim() || !svcDuration.trim()) {
+      Alert.alert('Required', 'Name, price, and duration are required.');
+      return;
+    }
+    setSvcSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append('name', svcName.trim());
+      formData.append('priceCents', String(Math.round(parseFloat(svcPrice) * 100)));
+      formData.append('durationMinutes', svcDuration.trim());
+      if (svcDescription.trim()) formData.append('description', svcDescription.trim());
+      if (svcTag.trim()) formData.append('tag', svcTag.trim());
+      if (svcImage) formData.append('image', { uri: svcImage.uri, name: svcImage.name, type: svcImage.type } as any);
+
+      const allHeaders = getAuthHeaders();
+      const authToken = allHeaders['Authorization'];
+      const isEdit = !!serviceModal.service;
+      const url = isEdit
+        ? `${API_BASE_URL}/services/${serviceModal.service.id}`
+        : `${API_BASE_URL}/services`;
+
+      const res = await fetch(url, {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { Authorization: authToken },
+        body: formData,
+      });
+
+      if (res.ok) {
+        setServiceModal({ visible: false, service: null });
+        fetchAdminServices();
+        Alert.alert('✅ Saved', isEdit ? 'Service updated — prices are now live everywhere.' : 'New service added.');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert('Error', err.message ?? `Failed (${res.status})`);
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally { setSvcSubmitting(false); }
+  };
+
+  const deleteService = (service: any) => {
+    Alert.alert('Delete Service', `Remove "${service.name}"? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        const res = await fetch(`${API_BASE_URL}/services/${service.id}`, {
+          method: 'DELETE', headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          fetchAdminServices();
+          Alert.alert('Deleted', `"${service.name}" removed.`);
+        }
+      }},
+    ]);
+  };
+
   useEffect(() => { if (isAdmin) loadAll(); }, []);
+
+  // Poll for new payment notifications every 15s — play sound when new ones arrive
+  const lastNotifCount = useRef<number | null>(null);
+  const getAuthHeadersRef = useRef(getAuthHeaders);
+  useEffect(() => { getAuthHeadersRef.current = getAuthHeaders; }, [getAuthHeaders]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const checkNotifications = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/payments/notifications`,
+          { headers: getAuthHeadersRef.current() }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const pendingCount = data.filter((n: any) => n.status === 'pending').length;
+
+        // First run — just record current count, no alert for existing
+        if (lastNotifCount.current === null) {
+          lastNotifCount.current = pendingCount;
+          setPaymentNotifications(data);
+          return;
+        }
+
+        if (pendingCount > lastNotifCount.current) {
+          const newest = data
+            .filter((n: any) => n.status === 'pending')
+            .sort((a: any, b: any) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            )[0];
+          const isDeposit = newest?.paymentMethod?.startsWith('deposit');
+
+          await playSound(isDeposit ? 'deposit' : 'debtAlert');
+          showToast(
+            isDeposit
+              ? `💳 Deposit proof from ${newest?.clientName ?? 'a client'} — check Payments tab`
+              : `⚠️ Balance payment from ${newest?.clientName ?? 'a client'} — check Payments tab`
+          );
+          setPaymentNotifications(data);
+        }
+
+        lastNotifCount.current = pendingCount;
+      } catch (err) {
+        console.log('Notification poll error:', err);
+      }
+    };
+
+    // Run immediately then every 15 seconds
+    checkNotifications();
+    const poll = setInterval(checkNotifications, 15000);
+    return () => {
+      clearInterval(poll);
+      lastNotifCount.current = null; // reset on unmount
+    };
+  }, [isAdmin]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -355,6 +555,16 @@ export default function AdminScreen() {
   if (tab === 'chat' && selectedSession) {
     return (
       <View style={{ flex: 1, backgroundColor: '#FAF5F6' }}>
+        {/* Toast visible in chat session too */}
+        {toast && (
+          <View style={s.toast}>
+            <Ionicons name="notifications" size={16} color="#fff" />
+            <Text style={s.toastText}>{toast}</Text>
+            <TouchableOpacity onPress={() => setToast(null)}>
+              <Ionicons name="close" size={16} color="rgba(255,255,255,0.7)" />
+            </TouchableOpacity>
+          </View>
+        )}
         {/* Tab bar stays visible */}
         <View style={s.tabRow}>
           {(['dashboard', 'bookings', 'payments', 'chat', 'gallery'] as const).map((t) => {
@@ -394,8 +604,11 @@ export default function AdminScreen() {
               {takenOver ? 'Release' : 'Take Over'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => fetchSession(selectedSession)} style={{ padding: 8 }}>
-            <Ionicons name="refresh" size={18} color="#9D7A7D" />
+          <TouchableOpacity onPress={() => fetchSession(selectedSession)} style={{ padding: 8 }} disabled={refreshingSession}>
+            {refreshingSession
+              ? <ActivityIndicator size="small" color="#9D7A7D" />
+              : <Ionicons name="refresh" size={18} color="#9D7A7D" />
+            }
           </TouchableOpacity>
         </View>
 
@@ -419,7 +632,7 @@ export default function AdminScreen() {
                     <View style={s.bubbleRowLeft}>
                       <Text style={s.bubbleSender}>👤 Client</Text>
                       <View style={[s.bubble, s.bubbleUser]}>
-                        <Text style={s.bubbleText}>{m.message}</Text>
+                        <Text selectable style={s.bubbleText}>{m.message}</Text>
                       </View>
                       <Text style={s.bubbleTime}>
                         {new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
@@ -431,7 +644,7 @@ export default function AdminScreen() {
                     <View style={s.bubbleRowRight}>
                       <Text style={s.bubbleSender}>🤖 Bella</Text>
                       <View style={[s.bubble, s.bubbleBot]}>
-                        <Text style={[s.bubbleText, { color: '#fff' }]}>{m.reply}</Text>
+                        <Text selectable style={[s.bubbleText, { color: '#fff' }]}>{m.reply}</Text>
                       </View>
                       <Text style={s.bubbleTime}>
                         {new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
@@ -443,7 +656,7 @@ export default function AdminScreen() {
                     <View style={s.bubbleRowRight}>
                       <Text style={s.bubbleSender}>👩‍💼 You (Admin)</Text>
                       <View style={[s.bubble, s.bubbleAdmin]}>
-                        <Text style={[s.bubbleText, { color: '#fff' }]}>{m.message}</Text>
+                        <Text selectable style={[s.bubbleText, { color: '#fff' }]}>{m.message}</Text>
                       </View>
                       <Text style={s.bubbleTime}>
                         {new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
@@ -505,13 +718,23 @@ export default function AdminScreen() {
   // ── MAIN LAYOUT — ScrollView for all other tabs ───────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: '#FAF5F6' }}>
+      {/* Floating toast notification */}
+      {toast && (
+        <View style={s.toast}>
+          <Ionicons name="notifications" size={16} color="#fff" />
+          <Text style={s.toastText}>{toast}</Text>
+          <TouchableOpacity onPress={() => setToast(null)}>
+            <Ionicons name="close" size={16} color="rgba(255,255,255,0.7)" />
+          </TouchableOpacity>
+        </View>
+      )}
       {/* Tab bar */}
       <View style={s.tabRow}>
-        {(['dashboard', 'bookings', 'payments', 'chat', 'gallery'] as const).map((t) => {
-          const icons = { dashboard: 'grid-outline', bookings: 'calendar-outline', payments: 'cash-outline', chat: 'chatbubbles-outline', gallery: 'images-outline' } as const;
+        {(['dashboard', 'bookings', 'payments', 'chat', 'gallery', 'services'] as const).map((t) => {
+          const icons = { dashboard: 'grid-outline', bookings: 'calendar-outline', payments: 'cash-outline', chat: 'chatbubbles-outline', gallery: 'images-outline', services: 'cut-outline' } as const;
           return (
             <TouchableOpacity key={t} style={[s.tabBtn, tab === t && s.tabBtnActive]}
-              onPress={() => { setTab(t); if (t === 'bookings') fetchBookings(filter); if (t === 'payments') fetchNotifications(); if (t === 'chat') fetchSessions(); if (t === 'gallery') fetchGallery(); }}>
+              onPress={() => { setTab(t); if (t === 'bookings') fetchBookings(filter); if (t === 'payments') fetchNotifications(); if (t === 'chat') fetchSessions(); if (t === 'gallery') fetchGallery(); if (t === 'services') fetchAdminServices(); }}>
               <View style={{ position: 'relative' }}>
                 <Ionicons name={icons[t]} size={18} color={tab === t ? '#9D7A7D' : '#B89FA1'} />
                 {t === 'payments' && pendingCount > 0 && (
@@ -571,7 +794,9 @@ export default function AdminScreen() {
         {tab === 'payments' && (
           <View style={s.section}>
             <Text style={s.sectionTitle}>Balance Payment Confirmations</Text>
-            <Text style={s.sectionSub}>Balance payments via card, bank transfer, or crypto. Verify before confirming.</Text>
+            <Text style={s.sectionSub}>
+              Deposit and balance payment proofs appear here. Verify in your bank or wallet then confirm. Card payments via Stripe are auto-confirmed.
+            </Text>
             {notifLoading ? <ActivityIndicator color="#9D7A7D" style={{ marginTop: 32 }} />
               : paymentNotifications.length === 0
                 ? <View style={{ alignItems: 'center', paddingVertical: 40 }}>
@@ -588,9 +813,12 @@ export default function AdminScreen() {
                         <View style={{ flex: 1 }}>
                           <Text style={s.notifName}>{n.clientName}</Text>
                           <Text style={s.notifMeta}>
-                            {n.paymentMethod === 'bank_transfer' ? '🏦 Bank Transfer'
-                              : n.paymentMethod === 'card' ? '💳 Card (Stripe)'
-                              : '₿ Crypto'} · Booking #{n.bookingId}
+                            {n.paymentMethod === 'bank_transfer' ? '🏦 Balance — Bank Transfer'
+                              : n.paymentMethod === 'card' ? '💳 Balance — Card (Stripe)'
+                              : n.paymentMethod === 'crypto' ? '₿ Balance — Crypto'
+                              : n.paymentMethod === 'deposit_bank_transfer' ? '🏦 Deposit — Bank Transfer'
+                              : n.paymentMethod === 'deposit_crypto' ? '₿ Deposit — Crypto'
+                              : n.paymentMethod} · Booking #{n.bookingId}
                           </Text>
                           <Text style={s.notifDate}>{new Date(n.createdAt).toLocaleString()}</Text>
                         </View>
@@ -704,6 +932,20 @@ export default function AdminScreen() {
               ))}
             </ScrollView>
 
+            {/* Caption input — shown for Expert Stylists to add stylist name */}
+            {selectedUploadFolder === 'expert_stylists' && (
+              <View style={{ marginBottom: 14 }}>
+                <Text style={[s.sectionTitle, { fontSize: 14, marginBottom: 6 }]}>Stylist Name</Text>
+                <TextInput
+                  style={[s.modalInput, { textAlign: 'left', fontSize: 15, fontWeight: '400', marginBottom: 0 }]}
+                  placeholder="e.g. Fatima Ibrahim"
+                  placeholderTextColor="#B89FA1"
+                  value={uploadCaption}
+                  onChangeText={setUploadCaption}
+                />
+              </View>
+            )}
+
             {/* Upload button */}
             <TouchableOpacity
               style={[s.uploadBtn, uploading && { opacity: 0.5 }]}
@@ -734,7 +976,7 @@ export default function AdminScreen() {
                   </View>
                 : <View style={s.galleryGrid}>
                     {galleryItems.map((item) => (
-                      <View key={item.id} style={s.galleryThumb}>
+                      <TouchableOpacity key={item.id} style={s.galleryThumb} onPress={() => setSelectedGalleryItem(item)}>
                         <Image source={{ uri: item.thumbnailUrl || item.url }} style={s.galleryThumbImage} resizeMode="cover" />
                         {item.type === 'video' && (
                           <View style={s.videoIcon}><Ionicons name="play-circle" size={24} color="#fff" /></View>
@@ -750,18 +992,184 @@ export default function AdminScreen() {
                         </TouchableOpacity>
                         {item.caption && (
                           <View style={s.thumbCaption}>
-                            <Text style={s.thumbCaptionText} numberOfLines={1}>{item.caption}</Text>
+                            <Text style={s.thumbCaptionText} numberOfLines={1}>
+                              {item.folder === 'expert_stylists' ? `👤 ${item.caption}` : item.caption}
+                            </Text>
                           </View>
                         )}
-                      </View>
+                      </TouchableOpacity>
                     ))}
                   </View>
             }
           </View>
         )}
+        {tab === 'services' && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Service Management</Text>
+            <Text style={s.sectionSub}>
+              Update prices, duration, and descriptions. Changes go live immediately — homepage cards, services page, and Bella all update automatically.
+            </Text>
+
+            <TouchableOpacity style={s.uploadBtn} onPress={() => openServiceModal(null)}>
+              <Ionicons name="add-circle-outline" size={18} color="#fff" />
+              <Text style={s.uploadBtnText}>Add New Service</Text>
+            </TouchableOpacity>
+
+            <View style={s.dividerLine} />
+
+            {servicesLoading
+              ? <ActivityIndicator color="#9D7A7D" style={{ marginTop: 32 }} />
+              : adminServices.length === 0
+              ? <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Ionicons name="cut-outline" size={48} color="#D6BFC1" />
+                  <Text style={[s.empty, { marginTop: 12 }]}>No services yet</Text>
+                </View>
+              : adminServices.map((svc) => (
+                  <View key={svc.id} style={s.bookingRow}>
+                    <View style={s.rowTop}>
+                      <Text style={s.rowName}>{svc.name}</Text>
+                      {svc.tag ? (
+                        <View style={[s.pill, { backgroundColor: '#F5EDE8' }]}>
+                          <Text style={[s.pillText, { color: '#9D7A7D' }]}>{svc.tag}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={s.rowService}>${((svc.priceCents ?? 0) / 100).toFixed(2)} · {svc.durationMinutes} mins</Text>
+                    {svc.description ? (
+                      <Text style={s.rowDate} numberOfLines={2}>{svc.description}</Text>
+                    ) : null}
+                    {svc.imageUrl ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                        <Ionicons name="image-outline" size={13} color="#38A169" />
+                        <Text style={[s.rowDate, { color: '#38A169' }]}>Custom image uploaded</Text>
+                      </View>
+                    ) : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                        <Ionicons name="image-outline" size={13} color="#B89FA1" />
+                        <Text style={[s.rowDate, { color: '#B89FA1' }]}>Using default image</Text>
+                      </View>
+                    )}
+                    <View style={s.rowActions}>
+                      <TouchableOpacity style={s.confirmBtn} onPress={() => openServiceModal(svc)}>
+                        <Ionicons name="pencil-outline" size={14} color="#fff" />
+                        <Text style={s.confirmText}>Edit / Update Price</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={s.cancelBtn} onPress={() => deleteService(svc)}>
+                        <Ionicons name="trash-outline" size={14} color="#E53E3E" />
+                        <Text style={s.cancelText}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+            }
+          </View>
+        )}
       </ScrollView>
 
-      {/* Owing modal */}
+      {/* Gallery lightbox */}
+      <Modal visible={!!selectedGalleryItem} transparent animationType="fade" onRequestClose={() => setSelectedGalleryItem(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', justifyContent: 'center', alignItems: 'center' }}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: Platform.OS === 'ios' ? 56 : 36, right: 20, zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => setSelectedGalleryItem(null)}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+          {selectedGalleryItem && (
+            selectedGalleryItem.type === 'video' ? (
+              <View style={{ width: '100%', height: '65%', justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name="play-circle" size={80} color="rgba(255,255,255,0.8)" />
+                <Text style={{ color: '#fff', fontSize: 15, marginTop: 16, textAlign: 'center', paddingHorizontal: 24 }}>
+                  Tap below to play video
+                </Text>
+                <TouchableOpacity
+                  style={{ marginTop: 20, backgroundColor: '#9D7A7D', borderRadius: 25, paddingVertical: 12, paddingHorizontal: 32, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  onPress={() => Linking.openURL(selectedGalleryItem.url)}
+                >
+                  <Ionicons name="open-outline" size={18} color="#fff" />
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Open & Play Video</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Image
+                source={{ uri: selectedGalleryItem.thumbnailUrl || selectedGalleryItem.url }}
+                style={{ width: '100%', height: '65%' }}
+                resizeMode="contain"
+              />
+            )
+          )}
+          {selectedGalleryItem?.caption && (
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 16, paddingHorizontal: 24, textAlign: 'center' }}>
+              {selectedGalleryItem.folder === 'expert_stylists' ? `👤 ${selectedGalleryItem.caption}` : selectedGalleryItem.caption}
+            </Text>
+          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}>
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 5 }}>
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                {UPLOAD_FOLDERS.find(f => f.key === selectedGalleryItem?.folder)?.label ?? selectedGalleryItem?.folder}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Service create/edit modal */}
+      <Modal visible={serviceModal.visible} transparent animationType="slide" onRequestClose={() => setServiceModal({ visible: false, service: null })}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={s.modalOverlay} onPress={() => setServiceModal({ visible: false, service: null })}>
+            <Pressable style={[s.modalCard, { maxHeight: '90%' }]}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={s.modalTitle}>{serviceModal.service ? 'Edit Service' : 'New Service'}</Text>
+                <Text style={s.modalSub}>Changes go live immediately across the app and Bella.</Text>
+
+                <Text style={[s.modalSub, { marginBottom: 4, fontWeight: '600', color: '#3B1C1A' }]}>Service Name</Text>
+                <TextInput style={s.modalInput} placeholder="e.g. Wig Installation & Styling"
+                  placeholderTextColor="#B89FA1" value={svcName} onChangeText={setSvcName} />
+
+                <Text style={[s.modalSub, { marginBottom: 4, fontWeight: '600', color: '#3B1C1A' }]}>Price (dollars)</Text>
+                <TextInput style={s.modalInput} placeholder="e.g. 350"
+                  placeholderTextColor="#B89FA1" keyboardType="decimal-pad"
+                  value={svcPrice} onChangeText={setSvcPrice} />
+
+                <Text style={[s.modalSub, { marginBottom: 4, fontWeight: '600', color: '#3B1C1A' }]}>Duration (minutes)</Text>
+                <TextInput style={s.modalInput} placeholder="e.g. 120"
+                  placeholderTextColor="#B89FA1" keyboardType="number-pad"
+                  value={svcDuration} onChangeText={setSvcDuration} />
+
+                <Text style={[s.modalSub, { marginBottom: 4, fontWeight: '600', color: '#3B1C1A' }]}>Description (optional)</Text>
+                <TextInput style={[s.modalInput, { height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                  placeholder="Short description shown on service cards"
+                  placeholderTextColor="#B89FA1" multiline
+                  value={svcDescription} onChangeText={setSvcDescription} />
+
+                <Text style={[s.modalSub, { marginBottom: 4, fontWeight: '600', color: '#3B1C1A' }]}>Tag (optional)</Text>
+                <TextInput style={s.modalInput} placeholder="e.g. Most Popular, Trending"
+                  placeholderTextColor="#B89FA1" value={svcTag} onChangeText={setSvcTag} />
+
+                <TouchableOpacity style={[s.owingBtn, { justifyContent: 'center', marginBottom: 16, paddingVertical: 12 }]}
+                  onPress={pickServiceImage}>
+                  <Ionicons name="image-outline" size={16} color="#D69E2E" />
+                  <Text style={s.owingText}>
+                    {svcImage ? `✓ ${svcImage.name}` : serviceModal.service?.imageUrl ? 'Replace photo (optional)' : 'Add photo (uses default if skipped)'}
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={s.modalActions}>
+                  <TouchableOpacity style={s.modalCancel} onPress={() => setServiceModal({ visible: false, service: null })}>
+                    <Text style={s.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.modalConfirm} onPress={submitService} disabled={svcSubmitting}>
+                    {svcSubmitting
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={s.modalConfirmText}>{serviceModal.service ? 'Save Changes' : 'Add Service'}</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <Modal visible={owingModalVisible} transparent animationType="fade" onRequestClose={() => setOwingModalVisible(false)}>
         <Pressable style={s.modalOverlay} onPress={() => setOwingModalVisible(false)}>
           <Pressable style={s.modalCard}>
@@ -785,6 +1193,8 @@ export default function AdminScreen() {
 }
 
 const s = StyleSheet.create({
+  toast: { position: 'absolute', top: Platform.OS === 'ios' ? 56 : 36, left: 16, right: 16, backgroundColor: '#9D7A7D', borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 999, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 10 },
+  toastText: { flex: 1, color: '#fff', fontWeight: '600', fontSize: 14 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
   guestTitle: { fontSize: 20, fontWeight: '700', color: '#3B1C1A', marginTop: 16 },
   tabRow: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F0E6E8' },
